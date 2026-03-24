@@ -165,19 +165,13 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
         request.session["user_id"] = user.id
         request.session["user_role"] = user.role
 
-        # Trigger initial YouTube sync for new creators
-        if user.role == "creator":
-            result = await db.execute(
-                select(Creator).where(Creator.user_id == user.id)
-            )
-            creator = result.scalar_one_or_none()
-            if creator and not creator.last_yt_sync:
-                await sync_creator_youtube(creator, db)
-
         return RedirectResponse("/", status_code=302)
     except Exception as e:
         log.error(f"OAuth callback error: {e}")
         return RedirectResponse("/login?error=auth_failed", status_code=302)
+
+    # YouTube sync is best-effort — never blocks login
+    # Use Sync Now from the admin dashboard to trigger manually
 
 
 @app.get("/logout")
