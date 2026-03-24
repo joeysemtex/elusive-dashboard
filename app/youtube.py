@@ -279,8 +279,15 @@ async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
         delete(YouTubeDemographic).where(YouTubeDemographic.creator_id == creator.id)
     )
 
-    for dimension in ["ageGroup", "gender", "country", "deviceType"]:
-        metric = "viewerPercentage"
+    # ageGroup/gender use viewerPercentage; country/deviceType use views
+    dimension_config = {
+        "ageGroup": "viewerPercentage",
+        "gender": "viewerPercentage",
+        "country": "views",
+        "deviceType": "views",
+    }
+
+    for dimension, metric in dimension_config.items():
         data = await _yt_analytics_get(token, {
             "ids": "channel==MINE",
             "startDate": start_date.isoformat(),
@@ -293,14 +300,28 @@ async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
         if not data or not data.get("rows"):
             continue
 
-        for row in data["rows"]:
-            demo = YouTubeDemographic(
-                creator_id=creator.id,
-                dimension=dimension,
-                value=row[0],
-                percentage=float(row[1]),
-            )
-            db.add(demo)
+        # For views-based metrics, convert raw counts to percentages
+        rows = data["rows"]
+        if metric == "views":
+            total = sum(float(r[1]) for r in rows)
+            for row in rows:
+                pct = (float(row[1]) / total * 100) if total > 0 else 0
+                demo = YouTubeDemographic(
+                    creator_id=creator.id,
+                    dimension=dimension,
+                    value=row[0],
+                    percentage=round(pct, 1),
+                )
+                db.add(demo)
+        else:
+            for row in rows:
+                demo = YouTubeDemographic(
+                    creator_id=creator.id,
+                    dimension=dimension,
+                    value=row[0],
+                    percentage=float(row[1]),
+                )
+                db.add(demo)
 
 
 async def _calculate_metrics(creator: Creator, db: AsyncSession):
