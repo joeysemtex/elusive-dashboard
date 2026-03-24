@@ -231,6 +231,67 @@ async def agency_dashboard(request: Request, db: AsyncSession = Depends(get_db))
     })
 
 
+# --- Helpers for tab endpoints ---
+
+def _compute_format_metrics(videos):
+    """Compute aggregate metrics for a list of videos."""
+    if not videos:
+        return {"count": 0, "avg_views": 0, "avg_engagement": 0.0, "avg_duration": 0}
+    count = len(videos)
+    return {
+        "count": count,
+        "avg_views": int(sum(v.views or 0 for v in videos) / count),
+        "avg_engagement": round(sum(v.engagement_rate or 0 for v in videos) / count, 2),
+        "avg_duration": int(sum(v.duration_seconds or 0 for v in videos) / count),
+    }
+
+
+async def _get_creator_for_request(slug: str, request: Request, db: AsyncSession):
+    """Auth check + creator lookup for HTMX partial endpoints."""
+    if not request.session.get("user_id"):
+        raise HTTPException(status_code=401)
+    user = await get_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401)
+    result = await db.execute(select(Creator).where(Creator.slug == slug))
+    creator = result.scalar_one_or_none()
+    if not creator:
+        raise HTTPException(status_code=404)
+    if user.role != "admin" and creator.user_id != user.id:
+        raise HTTPException(status_code=403)
+    return user, creator
+
+
+async def _get_all_creator_videos(creator_id: int, db: AsyncSession):
+    """Fetch all videos for a creator, split into long_form and shorts."""
+    vids_result = await db.execute(
+        select(YouTubeVideo)
+        .where(YouTubeVideo.creator_id == creator_id)
+        .order_by(YouTubeVideo.published_at.desc())
+    )
+    all_videos = vids_result.scalars().all()
+    long_form = [v for v in all_videos if (v.duration_seconds or 0) >= 60]
+    shorts = [v for v in all_videos if (v.duration_seconds or 0) < 60]
+    return long_form, shorts
+
+
+def _get_audience_metrics(demo_data: dict) -> dict:
+    """Derive top-line audience metrics from demographics data."""
+    def _top(dimension):
+        items = demo_data.get(dimension, [])
+        if not items:
+            return "N/A"
+        top = max(items, key=lambda x: x["percentage"])
+        return f"{top['value']} ({top['percentage']:.0f}%)"
+
+    return {
+        "top_age": _top("ageGroup"),
+        "top_country": _top("country"),
+        "primary_device": _top("deviceType"),
+        "gender_majority": _top("gender"),
+    }
+
+
 @app.get("/creator/{slug}", response_class=HTMLResponse)
 async def creator_dashboard(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
     redirect = require_auth(request)
@@ -253,14 +314,10 @@ async def creator_dashboard(slug: str, request: Request, db: AsyncSession = Depe
         if not creator.user_id == user.id:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    # Recent videos
-    vids_result = await db.execute(
-        select(YouTubeVideo)
-        .where(YouTubeVideo.creator_id == creator.id)
-        .order_by(YouTubeVideo.published_at.desc())
-        .limit(5)
-    )
-    videos = vids_result.scalars().all()
+    # All videos, split by format
+    long_form, shorts = await _get_all_creator_videos(creator.id, db)
+    long_form_metrics = _compute_format_metrics(long_form)
+    shorts_metrics = _compute_format_metrics(shorts)
 
     # Daily stats (30 days)
     stats_result = await db.execute(
@@ -284,10 +341,57 @@ async def creator_dashboard(slug: str, request: Request, db: AsyncSession = Depe
     return templates.TemplateResponse(request, "creator.html", {
         "user": user,
         "creator": creator,
-        "videos": videos,
+        "long_form_videos": long_form[:10],
+        "long_form_metrics": long_form_metrics,
+        "shorts_videos": shorts[:20],
+        "shorts_metrics": shorts_metrics,
         "daily_stats": daily_stats,
         "demographics": demo_data,
+        "audience_metrics": _get_audience_metrics(demo_data),
         "page_title": creator.display_name,
+    })
+
+
+# --- HTMX tab partials ---
+
+@app.get("/creator/{slug}/tab/longform", response_class=HTMLResponse)
+async def tab_longform(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
+    user, creator = await _get_creator_for_request(slug, request, db)
+    long_form, _ = await _get_all_creator_videos(creator.id, db)
+    return templates.TemplateResponse(request, "partials/tab_longform.html", {
+        "creator": creator,
+        "long_form_videos": long_form[:10],
+        "long_form_metrics": _compute_format_metrics(long_form),
+    })
+
+
+@app.get("/creator/{slug}/tab/shorts", response_class=HTMLResponse)
+async def tab_shorts(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
+    user, creator = await _get_creator_for_request(slug, request, db)
+    _, shorts = await _get_all_creator_videos(creator.id, db)
+    return templates.TemplateResponse(request, "partials/tab_shorts.html", {
+        "creator": creator,
+        "shorts_videos": shorts[:20],
+        "shorts_metrics": _compute_format_metrics(shorts),
+    })
+
+
+@app.get("/creator/{slug}/tab/audience", response_class=HTMLResponse)
+async def tab_audience(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
+    user, creator = await _get_creator_for_request(slug, request, db)
+    demo_result = await db.execute(
+        select(YouTubeDemographic)
+        .where(YouTubeDemographic.creator_id == creator.id)
+    )
+    demographics = demo_result.scalars().all()
+    demo_data = {}
+    for d in demographics:
+        demo_data.setdefault(d.dimension, []).append({"value": d.value, "percentage": d.percentage})
+
+    return templates.TemplateResponse(request, "partials/tab_audience.html", {
+        "creator": creator,
+        "demographics": demo_data,
+        "audience_metrics": _get_audience_metrics(demo_data),
     })
 
 

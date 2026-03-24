@@ -142,7 +142,29 @@ async def get_creator_youtube(
                 {"value": d.value, "percentage": round(d.percentage, 1)}
                 for d in demographics if d.dimension == dim
             ]
-            for dim in ["ageGroup", "gender", "country"]
+            for dim in ["ageGroup", "gender", "country", "deviceType"]
+        },
+        "long_form": {
+            "count": len([v for v in videos if (v.duration_seconds or 0) >= 60]),
+            "videos": [
+                {
+                    "video_id": v.video_id, "title": v.title, "views": v.views,
+                    "engagement_rate": round(v.engagement_rate, 2),
+                    "duration_seconds": v.duration_seconds,
+                }
+                for v in videos if (v.duration_seconds or 0) >= 60
+            ],
+        },
+        "shorts": {
+            "count": len([v for v in videos if (v.duration_seconds or 0) < 60]),
+            "videos": [
+                {
+                    "video_id": v.video_id, "title": v.title, "views": v.views,
+                    "engagement_rate": round(v.engagement_rate, 2),
+                    "duration_seconds": v.duration_seconds,
+                }
+                for v in videos if (v.duration_seconds or 0) < 60
+            ],
         },
     }
 
@@ -198,6 +220,7 @@ async def export_creator_pitch(
                 "views": v.views,
                 "likes": v.likes,
                 "engagement_rate": round(v.engagement_rate, 2),
+                "format": "short" if (v.duration_seconds or 0) < 60 else "long_form",
                 "url": f"https://youtube.com/watch?v={v.video_id}",
             }
             for v in top_videos

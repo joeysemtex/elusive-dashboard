@@ -1,0 +1,90 @@
+<!-- Phase 1.5: Audience tab partial (HTMX fragment — no extends) -->
+
+<div class="metrics-grid">
+    <div class="metric-card gold">
+        <div class="metric-label">Top Age Group</div>
+        <div class="metric-value" style="font-size: 18px;">{{ audience_metrics.top_age }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Top Country</div>
+        <div class="metric-value" style="font-size: 18px;">{{ audience_metrics.top_country }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Primary Device</div>
+        <div class="metric-value" style="font-size: 18px;">{{ audience_metrics.primary_device }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Gender Majority</div>
+        <div class="metric-value" style="font-size: 18px;">{{ audience_metrics.gender_majority }}</div>
+    </div>
+</div>
+
+<div class="audience-grid">
+    <!-- Age Distribution -->
+    <div class="audience-panel">
+        <h3>Age Distribution</h3>
+        {% for item in demographics.get("ageGroup", []) %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+        </div>
+        {% endfor %}
+        {% if not demographics.get("ageGroup") %}
+        <p class="empty-state">No age data available</p>
+        {% endif %}
+    </div>
+
+    <!-- Gender Split -->
+    <div class="audience-panel">
+        <h3>Gender Split</h3>
+        {% for item in demographics.get("gender", []) %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+        </div>
+        {% endfor %}
+        {% if not demographics.get("gender") %}
+        <p class="empty-state">No gender data available</p>
+        {% endif %}
+    </div>
+
+    <!-- Top Countries -->
+    <div class="audience-panel">
+        <h3>Top Countries</h3>
+        {% for item in demographics.get("country", []) %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+        </div>
+        {% endfor %}
+        {% if not demographics.get("country") %}
+        <p class="empty-state">No country data available</p>
+        {% endif %}
+    </div>
+
+    <!-- Device Type -->
+    <div class="audience-panel">
+        <h3>Device Type</h3>
+        {% for item in demographics.get("deviceType", []) %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+        </div>
+        {% endfor %}
+        {% if not demographics.get("deviceType") %}
+        <p class="empty-state">No device data yet. Run a sync to pull data.</p>
+        {% endif %}
+    </div>
+</div>
