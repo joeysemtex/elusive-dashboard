@@ -24,8 +24,10 @@ oauth.register(
             "https://www.googleapis.com/auth/youtube.readonly "
             "https://www.googleapis.com/auth/yt-analytics.readonly"
         ),
-        "prompt": "consent",
+    },
+    authorize_params={
         "access_type": "offline",
+        "prompt": "consent",
     },
 )
 
