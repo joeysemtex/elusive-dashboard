@@ -1,0 +1,112 @@
+<!-- Audience Tab Content (HTMX partial) -->
+
+<!-- Audience Hero Metrics -->
+<div class="metrics-grid">
+    {% if audience_heroes.get('ageGroup') %}
+    <div class="metric-card gold">
+        <div class="metric-label">Top Age Group</div>
+        <div class="metric-value">{{ audience_heroes['ageGroup'].value | replace('age', '') }}</div>
+        <div class="metric-change flat">{{ audience_heroes['ageGroup'].percentage }}%</div>
+    </div>
+    {% endif %}
+    {% if audience_heroes.get('country') %}
+    <div class="metric-card">
+        <div class="metric-label">Top Country</div>
+        <div class="metric-value">{{ audience_heroes['country'].value }}</div>
+        <div class="metric-change flat">{{ audience_heroes['country'].percentage }}%</div>
+    </div>
+    {% endif %}
+    {% if audience_heroes.get('deviceType') %}
+    <div class="metric-card">
+        <div class="metric-label">Primary Device</div>
+        <div class="metric-value">{{ audience_heroes['deviceType'].value | capitalize }}</div>
+        <div class="metric-change flat">{{ audience_heroes['deviceType'].percentage }}%</div>
+    </div>
+    {% endif %}
+    {% if audience_heroes.get('gender') %}
+    <div class="metric-card">
+        <div class="metric-label">Gender Majority</div>
+        <div class="metric-value">{{ audience_heroes['gender'].value | capitalize }}</div>
+        <div class="metric-change flat">{{ audience_heroes['gender'].percentage }}%</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Demographics Panels (2x2 grid) -->
+{% if demographics %}
+<div class="audience-grid">
+    {% if demographics.get('ageGroup') %}
+    <div class="chart-container">
+        <h3 class="chart-title" style="margin-bottom:16px;">Age Distribution</h3>
+        <div class="demo-bars">
+            {% for item in demographics['ageGroup'] %}
+            <div class="demo-bar-row">
+                <div class="demo-bar-label">{{ item.value | replace('age', '') }}</div>
+                <div class="demo-bar-track">
+                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+                </div>
+                <div class="demo-bar-value">{{ item.percentage }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if demographics.get('gender') %}
+    <div class="chart-container">
+        <h3 class="chart-title" style="margin-bottom:16px;">Gender Split</h3>
+        <div class="demo-bars">
+            {% for item in demographics['gender'] %}
+            <div class="demo-bar-row">
+                <div class="demo-bar-label">{{ item.value | capitalize }}</div>
+                <div class="demo-bar-track">
+                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+                </div>
+                <div class="demo-bar-value">{{ item.percentage }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if demographics.get('country') %}
+    <div class="chart-container">
+        <h3 class="chart-title" style="margin-bottom:16px;">Top Countries</h3>
+        <div class="demo-bars">
+            {% for item in demographics['country'] %}
+            <div class="demo-bar-row">
+                <div class="demo-bar-label">{{ item.value }}</div>
+                <div class="demo-bar-track">
+                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+                </div>
+                <div class="demo-bar-value">{{ item.percentage }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if demographics.get('deviceType') %}
+    <div class="chart-container">
+        <h3 class="chart-title" style="margin-bottom:16px;">Device Type</h3>
+        <div class="demo-bars">
+            {% for item in demographics['deviceType'] %}
+            <div class="demo-bar-row">
+                <div class="demo-bar-label">{{ item.value | capitalize }}</div>
+                <div class="demo-bar-track">
+                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+                </div>
+                <div class="demo-bar-value">{{ item.percentage }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+    <h3>No audience data yet</h3>
+    <p>Demographics will appear after the first YouTube Analytics sync.</p>
+</div>
+{% endif %}

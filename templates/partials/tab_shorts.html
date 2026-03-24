@@ -1,0 +1,52 @@
+<!-- Shorts Tab Content (HTMX partial) -->
+
+<!-- Format Hero Metrics -->
+<div class="metrics-grid">
+    <div class="metric-card gold">
+        <div class="metric-label">Avg Views (Shorts)</div>
+        <div class="metric-value">{{ format_metrics.avg_views | format_number }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Avg Engagement Rate</div>
+        <div class="metric-value">{{ format_metrics.avg_engagement | format_percent }}</div>
+        <div class="metric-change flat">Typically higher for Shorts</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Avg Duration</div>
+        <div class="metric-value">{{ format_metrics.avg_duration }}s</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Shorts Count</div>
+        <div class="metric-value">{{ format_metrics.count }}</div>
+    </div>
+</div>
+
+<!-- Shorts Video Grid (portrait 9:16) -->
+{% if videos %}
+<div class="shorts-grid">
+    {% for video in videos %}
+    <div class="shorts-card">
+        <div class="shorts-thumb-wrap">
+            <img src="{{ video.thumbnail_url }}" class="shorts-thumbnail" alt="{{ video.title }}" loading="lazy">
+            <span class="duration-badge">{{ video.duration_seconds }}s</span>
+        </div>
+        <div class="shorts-info">
+            <div class="shorts-title">{{ video.title }}</div>
+            <div class="shorts-stats">
+                <span>{{ video.views | format_number }} views</span>
+                <span>{{ video.engagement_rate | format_percent }}</span>
+            </div>
+            {% if video.published_at %}
+            <div class="shorts-date text-muted">{{ video.published_at | timeago }}</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    <h3>No Shorts synced yet</h3>
+    <p>Videos under 60 seconds will appear here after sync.</p>
+</div>
+{% endif %}

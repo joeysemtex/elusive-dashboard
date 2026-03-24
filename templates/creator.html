@@ -37,8 +37,8 @@
     </div>
 </div>
 
-<!-- Hero Metrics -->
-<div class="metrics-grid">
+<!-- Channel-Level Metrics (always visible) -->
+<div class="metrics-grid" style="margin-bottom:24px;">
     <div class="metric-card gold">
         <div class="metric-label">Subscribers</div>
         <div class="metric-value">{{ creator.yt_subscribers | format_number }}</div>
@@ -73,108 +73,38 @@
 </div>
 {% endif %}
 
-<!-- YouTube Section -->
-<div class="section-header" style="margin-top:32px;">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.54 6.42a2.78 2.78 0 00-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 00-1.94 2A29 29 0 001 11.75a29 29 0 00.46 5.33A2.78 2.78 0 003.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 001.94-2 29 29 0 00.46-5.25 29 29 0 00-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></svg>
-    Recent Videos
+<!-- Tab Bar -->
+<div class="tab-bar">
+    <button class="tab-item active"
+            hx-get="/creator/{{ creator.slug }}/tab/longform"
+            hx-target="#tab-content"
+            hx-swap="innerHTML"
+            onclick="activateTab(this)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>
+        Long Form
+    </button>
+    <button class="tab-item"
+            hx-get="/creator/{{ creator.slug }}/tab/shorts"
+            hx-target="#tab-content"
+            hx-swap="innerHTML"
+            onclick="activateTab(this)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Shorts
+    </button>
+    <button class="tab-item"
+            hx-get="/creator/{{ creator.slug }}/tab/audience"
+            hx-target="#tab-content"
+            hx-swap="innerHTML"
+            onclick="activateTab(this)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Audience
+    </button>
 </div>
 
-{% if videos %}
-<div class="video-list">
-    {% for video in videos %}
-    <div class="video-item">
-        <img src="{{ video.thumbnail_url }}" class="video-thumbnail" alt="{{ video.title }}" loading="lazy">
-        <div class="video-info">
-            <div class="video-title">{{ video.title }}</div>
-            <div class="video-meta">
-                <span class="video-stat">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    {{ video.views | format_number }}
-                </span>
-                <span class="video-stat">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/></svg>
-                    {{ video.likes | format_number }}
-                </span>
-                <span class="video-stat">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                    {{ video.comments | format_number }}
-                </span>
-                <span class="video-stat">
-                    {{ video.engagement_rate | format_percent }} engage
-                </span>
-                {% if video.published_at %}
-                <span class="video-stat text-muted">
-                    {{ video.published_at | timeago }}
-                </span>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    {% endfor %}
+<!-- Tab Content Area (swapped by HTMX) -->
+<div id="tab-content">
+    {% include "partials/tab_longform.html" %}
 </div>
-{% else %}
-<div class="empty-state">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-    <h3>No videos synced yet</h3>
-    <p>Videos will appear after the first YouTube sync.</p>
-</div>
-{% endif %}
-
-<!-- Demographics -->
-{% if demographics %}
-<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:24px;margin-top:32px;">
-    {% if demographics.get('ageGroup') %}
-    <div class="chart-container">
-        <h3 class="chart-title" style="margin-bottom:16px;">Age Distribution</h3>
-        <div class="demo-bars">
-            {% for item in demographics['ageGroup'] %}
-            <div class="demo-bar-row">
-                <div class="demo-bar-label">{{ item.value | replace('age', '') }}</div>
-                <div class="demo-bar-track">
-                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
-                </div>
-                <div class="demo-bar-value">{{ item.percentage }}%</div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    {% if demographics.get('gender') %}
-    <div class="chart-container">
-        <h3 class="chart-title" style="margin-bottom:16px;">Gender Split</h3>
-        <div class="demo-bars">
-            {% for item in demographics['gender'] %}
-            <div class="demo-bar-row">
-                <div class="demo-bar-label">{{ item.value | capitalize }}</div>
-                <div class="demo-bar-track">
-                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
-                </div>
-                <div class="demo-bar-value">{{ item.percentage }}%</div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    {% if demographics.get('country') %}
-    <div class="chart-container">
-        <h3 class="chart-title" style="margin-bottom:16px;">Top Countries</h3>
-        <div class="demo-bars">
-            {% for item in demographics['country'] %}
-            <div class="demo-bar-row">
-                <div class="demo-bar-label">{{ item.value }}</div>
-                <div class="demo-bar-track">
-                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
-                </div>
-                <div class="demo-bar-value">{{ item.percentage }}%</div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-</div>
-{% endif %}
 
 {% if creator.last_yt_sync %}
 <div class="sync-info" style="margin-top:32px;">
@@ -185,6 +115,12 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+function activateTab(el) {
+    document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+}
+</script>
 {% if daily_stats %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
