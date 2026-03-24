@@ -177,6 +177,7 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
             )
             creator = result.scalar_one_or_none()
             if creator and not creator.last_yt_sync:
+                await db.refresh(creator, ["user"])
                 await sync_creator_youtube(creator, db)
 
         return RedirectResponse("/", status_code=302)
