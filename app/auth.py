@@ -31,8 +31,15 @@ oauth.register(
 
 
 async def handle_google_login(request: Request):
-    """Redirect to Google OAuth consent screen."""
-    redirect_uri = settings.google_redirect_uri
+    """Redirect to Google OAuth consent screen.
+
+    Derives the callback URL from the request itself rather than
+    building it from BASE_URL, avoiding doubled-path bugs.
+    """
+    redirect_uri = str(request.url_for("google_callback"))
+    # Railway proxy may report http; force https in production
+    if redirect_uri.startswith("http://") and settings.BASE_URL.startswith("https://"):
+        redirect_uri = redirect_uri.replace("http://", "https://", 1)
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
