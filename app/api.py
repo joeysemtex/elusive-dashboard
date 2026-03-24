@@ -74,40 +74,14 @@ async def get_creator_youtube(
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
 
-    # All videos
+    # Recent videos
     vids_result = await db.execute(
         select(YouTubeVideo)
         .where(YouTubeVideo.creator_id == creator_id)
         .order_by(YouTubeVideo.published_at.desc())
+        .limit(10)
     )
-    all_videos = vids_result.scalars().all()
-
-    # Split by format
-    longform_videos = [v for v in all_videos if v.duration_seconds >= 60]
-    shorts_videos = [v for v in all_videos if v.duration_seconds < 60]
-
-    def _format_video(v):
-        return {
-            "video_id": v.video_id,
-            "title": v.title,
-            "thumbnail_url": v.thumbnail_url,
-            "published_at": v.published_at.isoformat() if v.published_at else None,
-            "duration_seconds": v.duration_seconds,
-            "views": v.views,
-            "likes": v.likes,
-            "comments": v.comments,
-            "engagement_rate": round(v.engagement_rate, 2),
-        }
-
-    def _format_metrics(vids):
-        if not vids:
-            return {"avg_views": 0, "avg_engagement": 0.0, "avg_duration": 0, "count": 0}
-        return {
-            "avg_views": int(sum(v.views for v in vids) / len(vids)),
-            "avg_engagement": round(sum(v.engagement_rate for v in vids) / len(vids), 2),
-            "avg_duration": int(sum(v.duration_seconds for v in vids) / len(vids)),
-            "count": len(vids),
-        }
+    videos = vids_result.scalars().all()
 
     # Daily stats (30 days)
     stats_result = await db.execute(
@@ -118,7 +92,7 @@ async def get_creator_youtube(
     )
     daily_stats = stats_result.scalars().all()
 
-    # Demographics (now includes deviceType)
+    # Demographics
     demo_result = await db.execute(
         select(YouTubeDemographic)
         .where(YouTubeDemographic.creator_id == creator_id)
@@ -139,14 +113,20 @@ async def get_creator_youtube(
             "avg_view_duration_seconds": round(creator.yt_avg_view_duration, 1),
             "trend": creator.trend_direction,
         },
-        "longform": {
-            "metrics": _format_metrics(longform_videos),
-            "videos": [_format_video(v) for v in longform_videos[:10]],
-        },
-        "shorts": {
-            "metrics": _format_metrics(shorts_videos),
-            "videos": [_format_video(v) for v in shorts_videos[:10]],
-        },
+        "videos": [
+            {
+                "video_id": v.video_id,
+                "title": v.title,
+                "thumbnail_url": v.thumbnail_url,
+                "published_at": v.published_at.isoformat() if v.published_at else None,
+                "duration_seconds": v.duration_seconds,
+                "views": v.views,
+                "likes": v.likes,
+                "comments": v.comments,
+                "engagement_rate": round(v.engagement_rate, 2),
+            }
+            for v in videos
+        ],
         "daily_stats": [
             {
                 "date": s.date.strftime("%Y-%m-%d"),
@@ -162,7 +142,7 @@ async def get_creator_youtube(
                 {"value": d.value, "percentage": round(d.percentage, 1)}
                 for d in demographics if d.dimension == dim
             ]
-            for dim in ["ageGroup", "gender", "country", "deviceType"]
+            for dim in ["ageGroup", "gender", "country"]
         },
     }
 
@@ -190,29 +170,14 @@ async def export_creator_pitch(
     )
     daily_stats = stats_result.scalars().all()
 
-    # All videos for format-separated top performers
+    # Recent videos for top performers
     vids_result = await db.execute(
         select(YouTubeVideo)
         .where(YouTubeVideo.creator_id == creator_id)
         .order_by(YouTubeVideo.views.desc())
+        .limit(5)
     )
-    all_videos = vids_result.scalars().all()
-
-    longform = [v for v in all_videos if v.duration_seconds >= 60]
-    shorts = [v for v in all_videos if v.duration_seconds < 60]
-
-    def _top_vids(vids, limit=5):
-        return [
-            {
-                "title": v.title,
-                "views": v.views,
-                "likes": v.likes,
-                "duration_seconds": v.duration_seconds,
-                "engagement_rate": round(v.engagement_rate, 2),
-                "url": f"https://youtube.com/watch?v={v.video_id}",
-            }
-            for v in vids[:limit]
-        ]
+    top_videos = vids_result.scalars().all()
 
     avg_views = sum(s.views for s in daily_stats) / len(daily_stats) if daily_stats else 0
 
@@ -227,19 +192,16 @@ async def export_creator_pitch(
         "engagement_rate": round(creator.yt_engagement_rate, 2),
         "avg_view_duration_seconds": round(creator.yt_avg_view_duration, 1),
         "trend": creator.trend_direction,
-        "top_videos": _top_vids(all_videos[:5]),
-        "longform": {
-            "count": len(longform),
-            "avg_views": int(sum(v.views for v in longform) / len(longform)) if longform else 0,
-            "avg_engagement": round(sum(v.engagement_rate for v in longform) / len(longform), 2) if longform else 0,
-            "top_videos": _top_vids(longform),
-        },
-        "shorts": {
-            "count": len(shorts),
-            "avg_views": int(sum(v.views for v in shorts) / len(shorts)) if shorts else 0,
-            "avg_engagement": round(sum(v.engagement_rate for v in shorts) / len(shorts), 2) if shorts else 0,
-            "top_videos": _top_vids(shorts),
-        },
+        "top_videos": [
+            {
+                "title": v.title,
+                "views": v.views,
+                "likes": v.likes,
+                "engagement_rate": round(v.engagement_rate, 2),
+                "url": f"https://youtube.com/watch?v={v.video_id}",
+            }
+            for v in top_videos
+        ],
         "generated_at": datetime.datetime.utcnow().isoformat(),
         "source": "elusive-dashboard",
     }

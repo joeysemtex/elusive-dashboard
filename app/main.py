@@ -35,12 +35,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Elusive Analytics Dashboard", lifespan=lifespan)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.SECRET_KEY,
-    https_only=settings.BASE_URL.startswith("https://"),
-    same_site="lax",
-)
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(api_router)
 
@@ -230,15 +225,15 @@ async def agency_dashboard(request: Request, db: AsyncSession = Depends(get_db))
     })
 
 
-async def _get_creator_with_auth(slug: str, request: Request, db: AsyncSession):
-    """Shared auth + creator lookup for main route and tab partials."""
+@app.get("/creator/{slug}", response_class=HTMLResponse)
+async def creator_dashboard(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
     redirect = require_auth(request)
     if redirect:
-        return None, None, redirect
+        return redirect
 
     user = await get_current_user(request, db)
     if not user:
-        return None, None, RedirectResponse("/login")
+        return RedirectResponse("/login")
 
     result = await db.execute(
         select(Creator).where(Creator.slug == slug)
@@ -247,53 +242,21 @@ async def _get_creator_with_auth(slug: str, request: Request, db: AsyncSession):
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
 
-    if user.role != "admin" and creator.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Creators can only see their own dashboard (admin can see all)
+    if user.role != "admin":
+        if not creator.user_id == user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
 
-    return user, creator, None
-
-
-async def _get_format_videos(creator_id: int, db: AsyncSession, is_short: bool, limit: int = 10):
-    """Get videos filtered by format. is_short=True for <60s, False for >=60s."""
-    result = await db.execute(
+    # Recent videos
+    vids_result = await db.execute(
         select(YouTubeVideo)
-        .where(
-            YouTubeVideo.creator_id == creator_id,
-            YouTubeVideo.duration_seconds < 60 if is_short else YouTubeVideo.duration_seconds >= 60,
-        )
+        .where(YouTubeVideo.creator_id == creator.id)
         .order_by(YouTubeVideo.published_at.desc())
-        .limit(limit)
+        .limit(5)
     )
-    return result.scalars().all()
+    videos = vids_result.scalars().all()
 
-
-async def _get_format_metrics(creator_id: int, db: AsyncSession, is_short: bool):
-    """Calculate aggregate metrics for a video format."""
-    videos = await _get_format_videos(creator_id, db, is_short, limit=100)
-    if not videos:
-        return {"avg_views": 0, "avg_engagement": 0.0, "avg_duration": 0, "count": 0}
-    avg_views = sum(v.views for v in videos) / len(videos)
-    avg_engagement = sum(v.engagement_rate for v in videos) / len(videos)
-    avg_duration = sum(v.duration_seconds for v in videos) / len(videos)
-    return {
-        "avg_views": int(avg_views),
-        "avg_engagement": round(avg_engagement, 2),
-        "avg_duration": int(avg_duration),
-        "count": len(videos),
-    }
-
-
-@app.get("/creator/{slug}", response_class=HTMLResponse)
-async def creator_dashboard(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
-    user, creator, redirect = await _get_creator_with_auth(slug, request, db)
-    if redirect:
-        return redirect
-
-    # Long Form data (default tab)
-    longform_videos = await _get_format_videos(creator.id, db, is_short=False)
-    longform_metrics = await _get_format_metrics(creator.id, db, is_short=False)
-
-    # Daily stats (30 days) for the chart
+    # Daily stats (30 days)
     stats_result = await db.execute(
         select(YouTubeStat)
         .where(YouTubeStat.creator_id == creator.id)
@@ -302,55 +265,7 @@ async def creator_dashboard(slug: str, request: Request, db: AsyncSession = Depe
     )
     daily_stats = list(reversed(stats_result.scalars().all()))
 
-    return templates.TemplateResponse(request, "creator.html", {
-        "user": user,
-        "creator": creator,
-        "videos": longform_videos,
-        "format_metrics": longform_metrics,
-        "daily_stats": daily_stats,
-        "active_tab": "longform",
-        "page_title": creator.display_name,
-    })
-
-
-@app.get("/creator/{slug}/tab/longform", response_class=HTMLResponse)
-async def tab_longform(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
-    user, creator, redirect = await _get_creator_with_auth(slug, request, db)
-    if redirect:
-        return redirect
-
-    videos = await _get_format_videos(creator.id, db, is_short=False)
-    metrics = await _get_format_metrics(creator.id, db, is_short=False)
-
-    return templates.TemplateResponse(request, "partials/tab_longform.html", {
-        "creator": creator,
-        "videos": videos,
-        "format_metrics": metrics,
-    })
-
-
-@app.get("/creator/{slug}/tab/shorts", response_class=HTMLResponse)
-async def tab_shorts(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
-    user, creator, redirect = await _get_creator_with_auth(slug, request, db)
-    if redirect:
-        return redirect
-
-    videos = await _get_format_videos(creator.id, db, is_short=True)
-    metrics = await _get_format_metrics(creator.id, db, is_short=True)
-
-    return templates.TemplateResponse(request, "partials/tab_shorts.html", {
-        "creator": creator,
-        "videos": videos,
-        "format_metrics": metrics,
-    })
-
-
-@app.get("/creator/{slug}/tab/audience", response_class=HTMLResponse)
-async def tab_audience(slug: str, request: Request, db: AsyncSession = Depends(get_db)):
-    user, creator, redirect = await _get_creator_with_auth(slug, request, db)
-    if redirect:
-        return redirect
-
+    # Demographics
     demo_result = await db.execute(
         select(YouTubeDemographic)
         .where(YouTubeDemographic.creator_id == creator.id)
@@ -360,18 +275,13 @@ async def tab_audience(slug: str, request: Request, db: AsyncSession = Depends(g
     for d in demographics:
         demo_data.setdefault(d.dimension, []).append({"value": d.value, "percentage": d.percentage})
 
-    # Audience hero metrics: top value per dimension
-    audience_heroes = {}
-    for dim in ["ageGroup", "country", "deviceType", "gender"]:
-        items = demo_data.get(dim, [])
-        if items:
-            top = max(items, key=lambda x: x["percentage"])
-            audience_heroes[dim] = top
-
-    return templates.TemplateResponse(request, "partials/tab_audience.html", {
+    return templates.TemplateResponse(request, "creator.html", {
+        "user": user,
         "creator": creator,
+        "videos": videos,
+        "daily_stats": daily_stats,
         "demographics": demo_data,
-        "audience_heroes": audience_heroes,
+        "page_title": creator.display_name,
     })
 
 

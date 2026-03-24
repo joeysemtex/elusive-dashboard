@@ -153,7 +153,7 @@ async def _sync_recent_videos(creator: Creator, token: str, db: AsyncSession):
         "part": "id",
         "channelId": creator.youtube_channel_id,
         "order": "date",
-        "maxResults": 50,
+        "maxResults": 10,
         "type": "video",
     })
     if not search_data or not search_data.get("items"):
@@ -271,7 +271,7 @@ async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
         delete(YouTubeDemographic).where(YouTubeDemographic.creator_id == creator.id)
     )
 
-    for dimension in ["ageGroup", "gender", "country", "deviceType"]:
+    for dimension in ["ageGroup", "gender", "country"]:
         metric = "viewerPercentage"
         data = await _yt_analytics_get(token, {
             "ids": "channel==MINE",
