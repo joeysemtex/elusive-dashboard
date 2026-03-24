@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title or "Dashboard" }} — Elusive</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4" integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="layout">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="sidebar-logo">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <rect width="28" height="28" rx="6" fill="#C9A84C"/>
+                    <text x="14" y="19" text-anchor="middle" fill="#1C1C1C" font-family="IBM Plex Sans" font-weight="700" font-size="16">E</text>
+                </svg>
+                <h1>ELUSIVE</h1>
+            </div>
+
+            <div class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">Overview</div>
+                    {% if user.role == 'admin' %}
+                    <a href="/dashboard" class="nav-item {{ 'active' if request.url.path == '/dashboard' }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                        <span>Agency</span>
+                    </a>
+                    {% endif %}
+                </div>
+
+                {% if user.role == 'admin' and creators is defined %}
+                <div class="nav-section">
+                    <div class="nav-section-title">Creators</div>
+                    {% for c in creators %}
+                    <a href="/creator/{{ c.slug }}" class="nav-item {{ 'active' if request.url.path == '/creator/' + c.slug }}">
+                        <img src="{{ c.avatar_url or '/static/img/default-avatar.svg' }}" class="user-avatar" style="width:18px;height:18px;" alt="">
+                        <span>{{ c.display_name }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <img src="{{ user.avatar_url or '/static/img/default-avatar.svg' }}" class="user-avatar" alt="">
+                    <div>
+                        <div class="user-name">{{ user.name }}</div>
+                        <div class="user-role">{{ user.role | capitalize }}</div>
+                    </div>
+                </div>
+                <a href="/logout" class="nav-item" style="margin-top:12px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>Logout</span>
+                </a>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

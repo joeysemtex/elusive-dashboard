@@ -1,0 +1,34 @@
+# Secrets
+.env
+google_oauth_credentials.json
+meta_oauth_credentials.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dev database
+dev.db
+
+# Logs
+*.log
+
+# Alembic
+alembic/versions/__pycache__/
+.claude/

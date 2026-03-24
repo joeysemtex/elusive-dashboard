@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Creator Header -->
+<div class="page-header">
+    <div style="display:flex;align-items:center;gap:16px;">
+        <img src="{{ creator.avatar_url or '/static/img/default-avatar.svg' }}" class="creator-avatar" style="width:56px;height:56px;" alt="{{ creator.display_name }}">
+        <div>
+            <h1 class="page-title">{{ creator.display_name }}</h1>
+            <p class="page-subtitle">
+                {% if creator.youtube_channel_title %}
+                {{ creator.youtube_channel_title }}
+                {% else %}
+                YouTube not connected
+                {% endif %}
+            </p>
+        </div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;">
+        <span class="trend-badge {{ creator.trend_direction }}">
+            {% if creator.trend_direction == 'growing' %}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
+            {% elif creator.trend_direction == 'declining' %}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/></svg>
+            {% else %}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="1" y1="12" x2="23" y2="12"/></svg>
+            {% endif %}
+            {{ creator.trend_direction | capitalize }}
+        </span>
+        {% if user.role == 'admin' %}
+        <button class="btn btn-outline btn-sm" hx-post="/admin/sync/{{ creator.id }}" hx-target="#sync-result" hx-swap="innerHTML">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            Sync Now
+        </button>
+        <span id="sync-result"></span>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Hero Metrics -->
+<div class="metrics-grid">
+    <div class="metric-card gold">
+        <div class="metric-label">Subscribers</div>
+        <div class="metric-value">{{ creator.yt_subscribers | format_number }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">30-Day Views</div>
+        <div class="metric-value">{{ creator.yt_30d_views | format_number }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Engagement Rate</div>
+        <div class="metric-value">{{ creator.yt_engagement_rate | format_percent }}</div>
+        <div class="metric-change flat">Likes + comments / views</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Avg View Duration</div>
+        <div class="metric-value">{{ creator.yt_avg_view_duration | format_duration }}</div>
+    </div>
+</div>
+
+<!-- Views Chart (30 days) -->
+{% if daily_stats %}
+<div class="chart-container">
+    <div class="chart-header">
+        <h3 class="chart-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="vertical-align:middle;margin-right:6px;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Daily Views — Last 30 Days
+        </h3>
+    </div>
+    <div style="height:220px;">
+        <canvas id="views-chart"></canvas>
+    </div>
+</div>
+{% endif %}
+
+<!-- YouTube Section -->
+<div class="section-header" style="margin-top:32px;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22.54 6.42a2.78 2.78 0 00-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 00-1.94 2A29 29 0 001 11.75a29 29 0 00.46 5.33A2.78 2.78 0 003.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 001.94-2 29 29 0 00.46-5.25 29 29 0 00-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></svg>
+    Recent Videos
+</div>
+
+{% if videos %}
+<div class="video-list">
+    {% for video in videos %}
+    <div class="video-item">
+        <img src="{{ video.thumbnail_url }}" class="video-thumbnail" alt="{{ video.title }}" loading="lazy">
+        <div class="video-info">
+            <div class="video-title">{{ video.title }}</div>
+            <div class="video-meta">
+                <span class="video-stat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    {{ video.views | format_number }}
+                </span>
+                <span class="video-stat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/></svg>
+                    {{ video.likes | format_number }}
+                </span>
+                <span class="video-stat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                    {{ video.comments | format_number }}
+                </span>
+                <span class="video-stat">
+                    {{ video.engagement_rate | format_percent }} engage
+                </span>
+                {% if video.published_at %}
+                <span class="video-stat text-muted">
+                    {{ video.published_at | timeago }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+    <h3>No videos synced yet</h3>
+    <p>Videos will appear after the first YouTube sync.</p>
+</div>
+{% endif %}
+
+<!-- Demographics -->
+{% if demographics %}
+<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:24px;margin-top:32px;">
+    {% if demographics.get('ageGroup') %}
+    <div class="chart-container">
+        <h3 class="chart-title" style="margin-bottom:16px;">Age Distribution</h3>
+        <div class="demo-bars">
+            {% for item in demographics['ageGroup'] %}
+            <div class="demo-bar-row">
+                <div class="demo-bar-label">{{ item.value | replace('age', '') }}</div>
+                <div class="demo-bar-track">
+                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+                </div>
+                <div class="demo-bar-value">{{ item.percentage }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if demographics.get('gender') %}
+    <div class="chart-container">
+        <h3 class="chart-title" style="margin-bottom:16px;">Gender Split</h3>
+        <div class="demo-bars">
+            {% for item in demographics['gender'] %}
+            <div class="demo-bar-row">
+                <div class="demo-bar-label">{{ item.value | capitalize }}</div>
+                <div class="demo-bar-track">
+                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+                </div>
+                <div class="demo-bar-value">{{ item.percentage }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if demographics.get('country') %}
+    <div class="chart-container">
+        <h3 class="chart-title" style="margin-bottom:16px;">Top Countries</h3>
+        <div class="demo-bars">
+            {% for item in demographics['country'] %}
+            <div class="demo-bar-row">
+                <div class="demo-bar-label">{{ item.value }}</div>
+                <div class="demo-bar-track">
+                    <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+                </div>
+                <div class="demo-bar-value">{{ item.percentage }}%</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if creator.last_yt_sync %}
+<div class="sync-info" style="margin-top:32px;">
+    <span class="sync-dot"></span>
+    Last synced {{ creator.last_yt_sync | timeago }}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if daily_stats %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('views-chart');
+    if (!ctx) return;
+
+    const labels = {{ daily_stats | map(attribute='date') | map('strftime', '%b %d') | list | tojson }};
+    const views = {{ daily_stats | map(attribute='views') | list | tojson }};
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: views,
+                backgroundColor: '#C9A84C20',
+                borderColor: '#C9A84C',
+                borderWidth: 1.5,
+                borderRadius: 4,
+                hoverBackgroundColor: '#C9A84C40',
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1C1C1C',
+                    titleFont: { family: 'IBM Plex Sans', size: 12 },
+                    bodyFont: { family: 'IBM Plex Mono', size: 13 },
+                    padding: 10,
+                    cornerRadius: 6,
+                    callbacks: {
+                        label: function(ctx) {
+                            return ctx.raw.toLocaleString() + ' views';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { family: 'IBM Plex Sans', size: 10 }, color: '#6B6B6B', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
+                },
+                y: {
+                    grid: { color: '#EBEBEB', drawBorder: false },
+                    ticks: {
+                        font: { family: 'IBM Plex Mono', size: 11 },
+                        color: '#6B6B6B',
+                        callback: function(val) {
+                            if (val >= 1000000) return (val/1000000).toFixed(1) + 'M';
+                            if (val >= 1000) return (val/1000).toFixed(0) + 'K';
+                            return val;
+                        }
+                    },
+                    beginAtZero: true,
+                },
+            },
+        }
+    });
+});
+</script>
+{% endif %}
+{% endblock %}
