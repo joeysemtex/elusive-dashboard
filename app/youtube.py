@@ -348,12 +348,10 @@ def _parse_duration(iso_duration: str) -> int:
 
 
 def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime.datetime]:
-    """Parse ISO datetime string. Returns timezone-naive UTC for PostgreSQL compat."""
+    """Parse ISO datetime string."""
     if not dt_str:
         return None
     try:
-        dt = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        # Strip timezone info — all DB columns are naive UTC
-        return dt.replace(tzinfo=None)
+        return datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
     except ValueError:
         return None
