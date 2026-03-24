@@ -123,42 +123,15 @@ async def sync_creator_youtube(creator: Creator, db: AsyncSession) -> bool:
 
 
 async def _sync_channel_info(creator: Creator, token: str, db: AsyncSession):
-    """Pull channel-level metadata. Supports brand channels via managedByMe fallback."""
-    channel = None
-
-    # 1. Try the user's own channel first
+    """Pull channel-level metadata."""
     data = await _yt_get(token, "channels", {
         "part": "snippet,statistics",
         "mine": "true",
     })
-
-    if data and data.get("items"):
-        candidate = data["items"][0]
-        stats = candidate.get("statistics", {})
-        # Accept if channel has actual content; otherwise check for brand channels
-        if int(stats.get("videoCount", 0)) > 0:
-            channel = candidate
-
-    # 2. Fallback: check brand/managed channels (common for serious creators)
-    if channel is None:
-        managed = await _yt_get(token, "channels", {
-            "part": "snippet,statistics",
-            "managedByMe": "true",
-        })
-        if managed and managed.get("items"):
-            # Pick the brand channel with the most subscribers
-            best = max(managed["items"], key=lambda c: int(c.get("statistics", {}).get("subscriberCount", 0)))
-            channel = best
-            log.info(f"Using brand channel '{best['snippet']['title']}' for {creator.display_name}")
-
-    # 3. If still nothing, accept the mine=true result even if empty (new channel)
-    if channel is None and data and data.get("items"):
-        channel = data["items"][0]
-
-    if channel is None:
-        log.warning(f"No YouTube channel found for {creator.display_name}")
+    if not data or not data.get("items"):
         return
 
+    channel = data["items"][0]
     creator.youtube_channel_id = channel["id"]
     creator.youtube_channel_title = channel["snippet"]["title"]
     creator.youtube_channel_url = f"https://youtube.com/channel/{channel['id']}"
