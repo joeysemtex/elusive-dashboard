@@ -128,10 +128,18 @@ async def _sync_channel_info(creator: Creator, token: str, db: AsyncSession):
         "part": "snippet,statistics",
         "mine": "true",
     })
-    if not data or not data.get("items"):
-        return
 
-    channel = data["items"][0]
+    # Fallback to brand/managed channels if mine has no videos
+    channel = None
+    if data and data.get("items"):
+        channel = data["items"][0]
+    if not channel or int(channel.get("statistics", {}).get("videoCount", 0)) == 0:
+        managed = await _yt_get(token, "channels", {"part": "snippet,statistics", "managedByMe": "true"})
+        if managed and managed.get("items"):
+            channel = max(managed["items"], key=lambda c: int(c.get("statistics", {}).get("subscriberCount", 0)))
+
+    if not channel:
+        return
     creator.youtube_channel_id = channel["id"]
     creator.youtube_channel_title = channel["snippet"]["title"]
     creator.youtube_channel_url = f"https://youtube.com/channel/{channel['id']}"
