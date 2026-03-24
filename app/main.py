@@ -400,37 +400,6 @@ async def trigger_sync(creator_id: int, request: Request, db: AsyncSession = Dep
     return {"success": success}
 
 
-@app.post("/admin/reset-creators")
-async def reset_creators(request: Request, db: AsyncSession = Depends(get_db)):
-    """Admin: wipe all non-admin users and their data so creators re-auth fresh."""
-    user = await get_current_user(request, db)
-    if not user or user.role != "admin":
-        raise HTTPException(status_code=403)
-
-    from sqlalchemy import delete
-
-    # Get all creator IDs to cascade-delete related data
-    result = await db.execute(select(Creator))
-    creators = result.scalars().all()
-    creator_ids = [c.id for c in creators]
-
-    if creator_ids:
-        await db.execute(delete(YouTubeDemographic).where(YouTubeDemographic.creator_id.in_(creator_ids)))
-        await db.execute(delete(YouTubeVideo).where(YouTubeVideo.creator_id.in_(creator_ids)))
-        await db.execute(delete(YouTubeStat).where(YouTubeStat.creator_id.in_(creator_ids)))
-        await db.execute(delete(Creator).where(Creator.id.in_(creator_ids)))
-
-    # Delete all non-admin users
-    await db.execute(delete(User).where(User.role != "admin"))
-    await db.commit()
-
-    log.info(f"Admin reset: cleared {len(creator_ids)} creators and their data")
-
-    if request.headers.get("HX-Request"):
-        return HTMLResponse(f'<span class="sync-status success">Cleared {len(creator_ids)} creators</span>')
-    return RedirectResponse("/dashboard", status_code=302)
-
-
 @app.post("/admin/add-creator")
 async def add_creator_manual(request: Request, db: AsyncSession = Depends(get_db)):
     """Admin: manually add a creator (before they log in)."""
