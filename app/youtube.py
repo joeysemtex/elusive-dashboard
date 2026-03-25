@@ -279,49 +279,57 @@ async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
         delete(YouTubeDemographic).where(YouTubeDemographic.creator_id == creator.id)
     )
 
-    # ageGroup/gender use viewerPercentage; country/deviceType use views
-    dimension_config = {
-        "ageGroup": "viewerPercentage",
-        "gender": "viewerPercentage",
-        "country": "views",
-        "deviceType": "views",
-    }
+    # 1. Age + Gender: must be queried together, then aggregated separately
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "viewerPercentage",
+        "dimensions": "ageGroup,gender",
+        "sort": "ageGroup,gender",
+    })
+    if data and data.get("rows"):
+        # Rows are [ageGroup, gender, viewerPercentage]
+        # Aggregate by ageGroup (sum across genders)
+        age_totals = {}
+        gender_totals = {}
+        for row in data["rows"]:
+            age, gender, pct = row[0], row[1], float(row[2])
+            age_totals[age] = age_totals.get(age, 0) + pct
+            gender_totals[gender] = gender_totals.get(gender, 0) + pct
 
-    for dimension, metric in dimension_config.items():
+        for value, pct in age_totals.items():
+            db.add(YouTubeDemographic(
+                creator_id=creator.id, dimension="ageGroup",
+                value=value, percentage=round(pct, 1),
+            ))
+        for value, pct in gender_totals.items():
+            db.add(YouTubeDemographic(
+                creator_id=creator.id, dimension="gender",
+                value=value, percentage=round(pct, 1),
+            ))
+
+    # 2. Country and DeviceType: queried separately with views metric
+    for dimension in ["country", "deviceType"]:
         data = await _yt_analytics_get(token, {
             "ids": "channel==MINE",
             "startDate": start_date.isoformat(),
             "endDate": end_date.isoformat(),
-            "metrics": metric,
+            "metrics": "views",
             "dimensions": dimension,
-            "sort": f"-{metric}",
+            "sort": "-views",
             "maxResults": 10,
         })
         if not data or not data.get("rows"):
             continue
 
-        # For views-based metrics, convert raw counts to percentages
-        rows = data["rows"]
-        if metric == "views":
-            total = sum(float(r[1]) for r in rows)
-            for row in rows:
-                pct = (float(row[1]) / total * 100) if total > 0 else 0
-                demo = YouTubeDemographic(
-                    creator_id=creator.id,
-                    dimension=dimension,
-                    value=row[0],
-                    percentage=round(pct, 1),
-                )
-                db.add(demo)
-        else:
-            for row in rows:
-                demo = YouTubeDemographic(
-                    creator_id=creator.id,
-                    dimension=dimension,
-                    value=row[0],
-                    percentage=float(row[1]),
-                )
-                db.add(demo)
+        total = sum(float(r[1]) for r in data["rows"])
+        for row in data["rows"]:
+            pct = (float(row[1]) / total * 100) if total > 0 else 0
+            db.add(YouTubeDemographic(
+                creator_id=creator.id, dimension=dimension,
+                value=row[0], percentage=round(pct, 1),
+            ))
 
 
 async def _calculate_metrics(creator: Creator, db: AsyncSession):
