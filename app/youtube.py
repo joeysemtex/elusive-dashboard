@@ -279,38 +279,9 @@ async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
         delete(YouTubeDemographic).where(YouTubeDemographic.creator_id == creator.id)
     )
 
-    # 1. Age + Gender: must be queried together, then aggregated separately
-    data = await _yt_analytics_get(token, {
-        "ids": "channel==MINE",
-        "startDate": start_date.isoformat(),
-        "endDate": end_date.isoformat(),
-        "metrics": "viewerPercentage",
-        "dimensions": "ageGroup,gender",
-        "sort": "ageGroup,gender",
-    })
-    if data and data.get("rows"):
-        # Rows are [ageGroup, gender, viewerPercentage]
-        # Aggregate by ageGroup (sum across genders)
-        age_totals = {}
-        gender_totals = {}
-        for row in data["rows"]:
-            age, gender, pct = row[0], row[1], float(row[2])
-            age_totals[age] = age_totals.get(age, 0) + pct
-            gender_totals[gender] = gender_totals.get(gender, 0) + pct
-
-        for value, pct in age_totals.items():
-            db.add(YouTubeDemographic(
-                creator_id=creator.id, dimension="ageGroup",
-                value=value, percentage=round(pct, 1),
-            ))
-        for value, pct in gender_totals.items():
-            db.add(YouTubeDemographic(
-                creator_id=creator.id, dimension="gender",
-                value=value, percentage=round(pct, 1),
-            ))
-
-    # 2. Country and DeviceType: queried separately with views metric
-    for dimension in ["country", "deviceType"]:
+    # All dimensions use views metric, converted to percentages
+    # (viewerPercentage with combined ageGroup,gender returns 500 from Google)
+    for dimension in ["ageGroup", "gender", "country", "deviceType"]:
         data = await _yt_analytics_get(token, {
             "ids": "channel==MINE",
             "startDate": start_date.isoformat(),
