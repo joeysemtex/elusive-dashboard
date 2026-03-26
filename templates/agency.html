@@ -108,16 +108,6 @@
                 {% endif %}
             </div>
         </a>
-        <div class="creator-card-actions">
-            <button
-                class="btn-delete-creator"
-                title="Delete {{ creator.display_name }}"
-                onclick="confirmDeleteCreator({{ creator.id }}, '{{ creator.display_name | replace("'", "\\'") }}')"
-            >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                Remove
-            </button>
-        </div>
     </div>
     {% endfor %}
 </div>
@@ -151,81 +141,10 @@
     </div>
 </div>
 
-<!-- Delete Creator Confirmation Modal -->
-<div id="delete-creator-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;">
-    <div style="background:var(--surface);border-radius:var(--radius);padding:32px;width:100%;max-width:400px;box-shadow:var(--shadow-elevated);">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-            <div style="width:40px;height:40px;border-radius:50%;background:rgba(231,76,60,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-            </div>
-            <h3 style="font-size:18px;font-weight:600;">Remove Creator</h3>
-        </div>
-        <p style="font-size:13px;color:var(--mid-gray);margin-bottom:8px;">You are about to permanently remove:</p>
-        <p id="delete-creator-name" style="font-size:15px;font-weight:600;color:var(--charcoal);margin-bottom:16px;"></p>
-        <p style="font-size:13px;color:var(--mid-gray);margin-bottom:24px;">This will delete all YouTube stats, videos, demographics, and the associated user account. <strong style="color:var(--charcoal);">This action cannot be undone.</strong></p>
-        <div style="display:flex;gap:12px;justify-content:flex-end;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('delete-creator-modal').style.display='none'">Cancel</button>
-            <button id="delete-creator-confirm-btn" type="button" class="btn btn-sm" style="background:var(--danger);color:#fff;" onclick="executeDeleteCreator()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-                Remove Creator
-            </button>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// --- Delete creator ---
-let _deleteCreatorId = null;
-
-function confirmDeleteCreator(creatorId, creatorName) {
-    _deleteCreatorId = creatorId;
-    document.getElementById('delete-creator-name').textContent = creatorName;
-    document.getElementById('delete-creator-modal').style.display = 'flex';
-}
-
-async function executeDeleteCreator() {
-    if (!_deleteCreatorId) return;
-
-    const btn = document.getElementById('delete-creator-confirm-btn');
-    btn.disabled = true;
-    btn.textContent = 'Removing…';
-
-    try {
-        const response = await fetch(`/admin/delete-creator/${_deleteCreatorId}`, {
-            method: 'POST',
-            headers: { 'HX-Request': 'true' },
-        });
-
-        if (response.ok) {
-            // Animate the card out, then remove it from the DOM
-            const card = document.getElementById(`creator-card-${_deleteCreatorId}`);
-            if (card) {
-                card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-                card.style.opacity = '0';
-                card.style.transform = 'scale(0.95)';
-                setTimeout(() => card.remove(), 300);
-            }
-            document.getElementById('delete-creator-modal').style.display = 'none';
-        } else {
-            const data = await response.json().catch(() => ({}));
-            alert(data.detail || 'Failed to remove creator. Please try again.');
-            btn.disabled = false;
-            btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg> Remove Creator';
-        }
-    } catch (err) {
-        alert('Network error. Please try again.');
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg> Remove Creator';
-    }
-}
-
-// Close modal on backdrop click
-document.getElementById('delete-creator-modal').addEventListener('click', function(e) {
-    if (e.target === this) this.style.display = 'none';
-});
-
 // --- Sparkline charts for each creator ---
 document.addEventListener('DOMContentLoaded', function() {
     const sparklines = {{ sparklines | tojson }};
