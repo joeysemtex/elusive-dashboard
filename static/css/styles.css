@@ -652,6 +652,16 @@ a:hover { color: var(--gold-light); }
     font-size: 12px;
 }
 
+.btn-remove {
+    border-color: rgba(231, 76, 60, 0.25);
+    color: var(--mid-gray);
+}
+.btn-remove:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: rgba(231, 76, 60, 0.05);
+}
+
 /* --- Login Page --- */
 .login-page {
     display: flex;
