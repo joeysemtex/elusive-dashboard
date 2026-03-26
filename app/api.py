@@ -1,13 +1,13 @@
 """Pipeline API endpoints for Cowork/Claude Code integration."""
 import datetime
-from fastapi import APIRouter, Depends, Header, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.models import Creator, YouTubeStat, YouTubeVideo, YouTubeDemographic
+from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic
 
 router = APIRouter(prefix="/api", tags=["pipeline"])
 
@@ -228,3 +228,37 @@ async def export_creator_pitch(
         "generated_at": datetime.datetime.utcnow().isoformat(),
         "source": "elusive-dashboard",
     }
+
+
+@router.delete("/creators/{creator_id}", status_code=204)
+async def delete_creator(
+    creator_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(_verify_api_key),
+):
+    """Delete a creator and all associated data."""
+    result = await db.execute(
+        select(Creator).where(Creator.id == creator_id)
+    )
+    creator = result.scalar_one_or_none()
+    if not creator:
+        raise HTTPException(status_code=404, detail="Creator not found")
+
+    user_id = creator.user_id
+
+    # Delete related records first (no DB-level cascade configured)
+    await db.execute(delete(YouTubeDemographic).where(YouTubeDemographic.creator_id == creator_id))
+    await db.execute(delete(YouTubeVideo).where(YouTubeVideo.creator_id == creator_id))
+    await db.execute(delete(YouTubeStat).where(YouTubeStat.creator_id == creator_id))
+
+    # Delete the creator row, then the associated user
+    await db.delete(creator)
+    await db.flush()
+
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if user:
+        await db.delete(user)
+
+    await db.commit()
+    return Response(status_code=204)
