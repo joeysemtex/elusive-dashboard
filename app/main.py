@@ -3,6 +3,7 @@ import datetime
 import logging
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -450,3 +451,27 @@ async def add_creator_manual(request: Request, db: AsyncSession = Depends(get_db
     await db.commit()
 
     return RedirectResponse("/dashboard", status_code=302)
+
+
+@app.post("/admin/delete-creator/{creator_id}")
+async def delete_creator_admin(creator_id: int, request: Request, db: AsyncSession = Depends(get_db)):
+    """Admin: delete a creator and all associated data via the pipeline API."""
+    user = await get_current_user(request, db)
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            f"{settings.BASE_URL}/api/creators/{creator_id}",
+            headers={"x-api-key": settings.PIPELINE_API_KEY},
+        )
+
+    if response.status_code == 404:
+        raise HTTPException(status_code=404, detail="Creator not found")
+    if response.status_code == 401:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if response.status_code not in (200, 204):
+        raise HTTPException(status_code=500, detail="Failed to delete creator")
+
+    # HTMX: return an empty 200 so the row is swapped out
+    return HTMLResponse("", status_code=200)
