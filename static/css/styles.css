@@ -885,46 +885,79 @@ a:hover { color: var(--gold-light); }
     color: var(--charcoal);
 }
 
+/* --- Phase 3: Metric Split (Long Form / Shorts) --- */
+.metric-split {
+    display: flex;
+    gap: 16px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--light-gray);
+}
+
+.split-item {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--charcoal);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.split-label {
+    font-family: var(--font-primary);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--mid-gray);
+}
+
 /* --- Phase 3: Format Toggle --- */
 .format-toggle {
-    display: inline-flex;
-    background: var(--light-gray);
-    border-radius: var(--radius-sm);
-    padding: 2px;
-    gap: 2px;
-    margin-bottom: 20px;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
 }
 
 .format-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-family: var(--font-primary);
     font-size: 12px;
     font-weight: 500;
-    padding: 6px 16px;
-    border: none;
-    border-radius: 4px;
+    padding: 6px 14px;
+    border: 1px solid var(--light-gray);
+    border-radius: var(--radius-sm);
     background: transparent;
-    color: var(--mid-gray);
+    color: var(--charcoal);
     cursor: pointer;
     transition: all var(--transition);
 }
 
-.format-btn.active {
-    background: var(--surface);
-    color: var(--charcoal);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+.format-btn:hover {
+    border-color: var(--gold);
+    color: var(--gold);
 }
 
-.format-btn:hover:not(.active) { color: var(--charcoal); }
+.format-btn.active {
+    border-color: var(--gold);
+    background: var(--gold);
+    color: #fff;
+}
 
 /* --- Phase 3: Performance Table --- */
 .perf-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     background: var(--surface);
     border-radius: var(--radius);
     overflow: hidden;
     box-shadow: var(--shadow-card);
-    margin-bottom: 12px;
+    margin-bottom: 16px;
+    table-layout: fixed;
 }
 
 .perf-table thead th {
@@ -933,11 +966,17 @@ a:hover { color: var(--gold-light); }
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--mid-gray);
-    padding: 12px 16px;
+    padding: 14px 20px;
     text-align: left;
-    border-bottom: 1px solid var(--light-gray);
+    border-bottom: 2px solid var(--light-gray);
     background: var(--bg);
 }
+
+.perf-table thead th:first-child { width: 48%; }
+.perf-table thead th:nth-child(2) { width: 14%; }
+.perf-table thead th:nth-child(3) { width: 14%; }
+.perf-table thead th:nth-child(4) { width: 12%; }
+.perf-table thead th:nth-child(5) { width: 12%; }
 
 .perf-table tbody tr {
     cursor: pointer;
@@ -947,25 +986,27 @@ a:hover { color: var(--gold-light); }
 .perf-table tbody tr:hover { background: var(--gold-subtle); }
 
 .perf-table tbody td {
-    padding: 12px 16px;
+    padding: 16px 20px;
     font-size: 13px;
     border-bottom: 1px solid var(--light-gray);
     vertical-align: middle;
 }
 
+.perf-table tbody tr:last-child td { border-bottom: none; }
+
 .perf-table .video-thumb-sm {
-    width: 80px;
-    height: 45px;
-    border-radius: 4px;
+    width: 100px;
+    height: 56px;
+    border-radius: var(--radius-sm);
     object-fit: cover;
-    vertical-align: middle;
-    margin-right: 10px;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .perf-table .video-title-cell {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
     min-width: 0;
 }
 
@@ -974,7 +1015,8 @@ a:hover { color: var(--gold-light); }
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 500;
-    max-width: 280px;
+    flex: 1;
+    min-width: 0;
 }
 
 /* --- Phase 3: Back Link --- */
@@ -1079,30 +1121,75 @@ a:hover { color: var(--gold-light); }
 .traffic-donut-wrap {
     display: flex;
     align-items: center;
-    gap: 32px;
+    gap: 48px;
     margin-bottom: 24px;
 }
 
-.traffic-donut-wrap canvas { max-width: 240px; max-height: 240px; }
+.traffic-donut-container {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    flex-shrink: 0;
+}
+
+.traffic-donut-container canvas { width: 220px !important; height: 220px !important; }
+
+.traffic-donut-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.traffic-donut-center-value {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--charcoal);
+    line-height: 1.2;
+}
+
+.traffic-donut-center-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--mid-gray);
+}
 
 .traffic-legend {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
+    flex: 1;
 }
 
 .traffic-legend-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: 10px 1fr auto;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     font-size: 13px;
 }
 
 .traffic-legend-dot {
     width: 10px;
     height: 10px;
-    border-radius: 50%;
+    border-radius: 3px;
     flex-shrink: 0;
+}
+
+.traffic-legend-label { font-weight: 500; color: var(--charcoal); }
+
+.traffic-legend-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--mid-gray);
+    text-align: right;
 }
 
 /* --- Responsive --- */
@@ -1143,7 +1230,8 @@ a:hover { color: var(--gold-light); }
     .tab-btn { padding: 10px 14px; font-size: 13px; }
     .deep-dive-hero { grid-template-columns: 1fr; }
     .deep-dive-metrics { grid-template-columns: repeat(2, 1fr); }
-    .traffic-donut-wrap { flex-direction: column; }
+    .traffic-donut-wrap { flex-direction: column; align-items: stretch; }
+    .traffic-donut-container { align-self: center; }
     .perf-table .video-title-text { max-width: 160px; }
     .insights-bar { flex-direction: column; gap: 8px; }
 }

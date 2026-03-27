@@ -5,17 +5,17 @@
     <button class="format-btn {{ 'active' if active_format == 'all' }}"
             hx-get="/creator/{{ creator.slug }}/tab/content?format=all"
             hx-target="#tab-content" hx-swap="innerHTML">
-        All ({{ total_all }})
+        All&ensp;{{ total_all }}
     </button>
     <button class="format-btn {{ 'active' if active_format == 'longform' }}"
             hx-get="/creator/{{ creator.slug }}/tab/content?format=longform"
             hx-target="#tab-content" hx-swap="innerHTML">
-        Long Form ({{ total_long_form }})
+        Long Form&ensp;{{ total_long_form }}
     </button>
     <button class="format-btn {{ 'active' if active_format == 'shorts' }}"
             hx-get="/creator/{{ creator.slug }}/tab/content?format=shorts"
             hx-target="#tab-content" hx-swap="innerHTML">
-        Shorts ({{ total_shorts }})
+        Shorts&ensp;{{ total_shorts }}
     </button>
 </div>
 

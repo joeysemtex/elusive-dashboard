@@ -17,15 +17,18 @@
     <div class="metric-card">
         <div class="metric-label">Engagement Rate</div>
         <div class="metric-value">{{ creator.yt_engagement_rate | format_percent }}</div>
-        {% if period_comparison.has_comparison %}
-        <div class="period-badge {{ period_comparison.engagement.direction }}">
-            {% if period_comparison.engagement.direction == 'up' %}+{% endif %}{{ period_comparison.engagement.change_pct }}% vs prior 30d
+        <div class="metric-split">
+            <span class="split-item"><span class="split-label">Long Form</span> {{ lf_metrics.avg_engagement | format_percent }}</span>
+            <span class="split-item"><span class="split-label">Shorts</span> {{ shorts_metrics.avg_engagement | format_percent }}</span>
         </div>
-        {% endif %}
     </div>
     <div class="metric-card">
         <div class="metric-label">Avg View Duration</div>
         <div class="metric-value">{{ creator.yt_avg_view_duration | format_duration }}</div>
+        <div class="metric-split">
+            <span class="split-item"><span class="split-label">Long Form</span> {{ lf_metrics.avg_duration | format_duration }}</span>
+            <span class="split-item"><span class="split-label">Shorts</span> {{ shorts_metrics.avg_duration | format_duration }}</span>
+        </div>
     </div>
     <div class="metric-card">
         <div class="metric-label">Watch Time (30d)</div>

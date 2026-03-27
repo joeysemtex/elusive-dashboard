@@ -432,11 +432,18 @@ async def creator_dashboard(slug: str, request: Request, db: AsyncSession = Depe
     # Period comparison
     period_comparison = await _get_period_comparison(creator.id, db)
 
+    # Format-specific metrics for Overview split cards
+    long_form, shorts = await _get_all_creator_videos(creator.id, db)
+    lf_metrics = _compute_format_metrics(long_form)
+    shorts_metrics = _compute_format_metrics(shorts)
+
     return templates.TemplateResponse(request, "creator.html", {
         "user": user,
         "creator": creator,
         "daily_stats": daily_stats,
         "period_comparison": period_comparison,
+        "lf_metrics": lf_metrics,
+        "shorts_metrics": shorts_metrics,
         "page_title": creator.display_name,
     })
 
@@ -456,10 +463,17 @@ async def tab_overview(slug: str, request: Request, db: AsyncSession = Depends(g
     daily_stats = all_stats[-30:] if len(all_stats) > 30 else all_stats
     period_comparison = await _get_period_comparison(creator.id, db)
 
+    # Format-specific metrics for split cards
+    long_form, shorts = await _get_all_creator_videos(creator.id, db)
+    lf_metrics = _compute_format_metrics(long_form)
+    shorts_metrics = _compute_format_metrics(shorts)
+
     return templates.TemplateResponse(request, "partials/tab_overview.html", {
         "creator": creator,
         "daily_stats": daily_stats,
         "period_comparison": period_comparison,
+        "lf_metrics": lf_metrics,
+        "shorts_metrics": shorts_metrics,
     })
 
 
@@ -469,29 +483,34 @@ async def tab_content(slug: str, request: Request, db: AsyncSession = Depends(ge
     user, creator = await _get_creator_for_request(slug, request, db)
     long_form, shorts = await _get_all_creator_videos(creator.id, db)
 
+    # Filter to last 30 days for performance tables
+    thirty_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=30)
+    lf_30d = [v for v in long_form if v.published_at and v.published_at >= thirty_days_ago]
+    shorts_30d = [v for v in shorts if v.published_at and v.published_at >= thirty_days_ago]
+
     if format == "longform":
-        videos = long_form
+        videos_30d = lf_30d
     elif format == "shorts":
-        videos = shorts
+        videos_30d = shorts_30d
     else:
-        videos = sorted(long_form + shorts, key=lambda v: v.views or 0, reverse=True)
+        videos_30d = sorted(lf_30d + shorts_30d, key=lambda v: v.views or 0, reverse=True)
 
     # Filter out very recent videos (< 7 days) from underperformers
     seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
-    mature_videos = [v for v in videos if v.published_at and v.published_at < seven_days_ago]
+    mature_videos = [v for v in videos_30d if v.published_at and v.published_at < seven_days_ago]
 
-    top_10 = videos[:10]
+    top_10 = videos_30d[:10]
     bottom_10 = sorted(mature_videos, key=lambda v: v.views or 0)[:10] if len(mature_videos) > 10 else []
 
     return templates.TemplateResponse(request, "partials/tab_content.html", {
         "creator": creator,
         "top_videos": top_10,
         "bottom_videos": bottom_10,
-        "content_metrics": _compute_format_metrics(videos),
+        "content_metrics": _compute_format_metrics(videos_30d),
         "active_format": format,
-        "total_long_form": len(long_form),
-        "total_shorts": len(shorts),
-        "total_all": len(long_form) + len(shorts),
+        "total_long_form": len(lf_30d),
+        "total_shorts": len(shorts_30d),
+        "total_all": len(lf_30d) + len(shorts_30d),
     })
 
 

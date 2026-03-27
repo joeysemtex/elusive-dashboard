@@ -30,26 +30,14 @@
         </h3>
     </div>
     <div class="traffic-donut-wrap">
-        <canvas id="traffic-donut" width="240" height="240"></canvas>
-        <div class="traffic-legend" id="traffic-legend"></div>
-    </div>
-</div>
-
-<!-- Traffic Source Bars (fallback / additional detail) -->
-<div class="chart-container">
-    <div class="chart-header">
-        <h3 class="chart-title">Source Breakdown</h3>
-    </div>
-    <div class="demo-bars" style="margin-top:8px;">
-        {% for src in traffic.aggregate %}
-        <div class="demo-bar-row">
-            <span class="demo-bar-label">{{ src.source }}</span>
-            <div class="demo-bar-track">
-                <div class="demo-bar-fill" style="width: {{ (src.views / traffic.total_views * 100) if traffic.total_views > 0 else 0 }}%"></div>
+        <div class="traffic-donut-container">
+            <canvas id="traffic-donut" width="220" height="220"></canvas>
+            <div class="traffic-donut-center">
+                <span class="traffic-donut-center-value">{{ traffic.total_views | format_number }}</span>
+                <span class="traffic-donut-center-label">Total Views</span>
             </div>
-            <span class="demo-bar-value" style="width:64px;">{{ src.views | format_number }}</span>
         </div>
-        {% endfor %}
+        <div class="traffic-legend" id="traffic-legend"></div>
     </div>
 </div>
 
@@ -67,11 +55,12 @@
 
 <script>
 (function() {
-    var colors = ['#C9A84C','#6B6B6B','#2ECC71','#E67E22','#E74C3C','#3498DB','#9B59B6','#1ABC9C','#F39C12','#95A5A6'];
+    var colors = ['#C9A84C','#1C1C1C','#6B6B6B','#D4B96A','#2ECC71','#E67E22','#3498DB','#9B59B6','#1ABC9C','#95A5A6'];
 
     // Donut chart
     var agg = {{ traffic.aggregate | map(attribute='source') | list | tojson }};
     var aggViews = {{ traffic.aggregate | map(attribute='views') | list | tojson }};
+    var total = aggViews.reduce(function(a,b){return a+b;}, 0);
 
     var donutCtx = document.getElementById('traffic-donut');
     if (donutCtx && agg.length > 0) {
@@ -82,7 +71,11 @@
                 datasets: [{
                     data: aggViews,
                     backgroundColor: colors.slice(0, agg.length),
-                    borderWidth: 0
+                    borderColor: '#FFFFFF',
+                    borderWidth: 2,
+                    hoverBorderColor: '#FFFFFF',
+                    hoverBorderWidth: 3,
+                    hoverOffset: 6
                 }]
             },
             options: {
@@ -91,26 +84,36 @@
                     legend: { display: false },
                     tooltip: {
                         backgroundColor: '#1C1C1C',
+                        titleFont: { family: 'IBM Plex Sans', size: 12, weight: '600' },
                         bodyFont: { family: 'IBM Plex Mono', size: 12 },
-                        padding: 8,
+                        padding: 10,
                         cornerRadius: 6,
+                        displayColors: true,
+                        boxWidth: 8,
+                        boxHeight: 8,
+                        boxPadding: 4,
                         callbacks: {
                             label: function(ctx) {
-                                var total = ctx.dataset.data.reduce(function(a,b){return a+b;}, 0);
                                 var pct = total > 0 ? Math.round(ctx.raw / total * 100) : 0;
-                                return ctx.label + ': ' + ctx.raw.toLocaleString() + ' (' + pct + '%)';
+                                return ' ' + ctx.raw.toLocaleString() + ' views (' + pct + '%)';
                             }
                         }
                     }
                 },
-                cutout: '60%',
+                cutout: '68%',
+                radius: '95%',
             }
         });
-        // Build legend
+        // Build legend with percentages
         var legendEl = document.getElementById('traffic-legend');
         if (legendEl) {
             agg.forEach(function(label, i) {
-                legendEl.innerHTML += '<div class="traffic-legend-item"><span class="traffic-legend-dot" style="background:' + colors[i] + '"></span>' + label + ' (' + aggViews[i].toLocaleString() + ')</div>';
+                var pct = total > 0 ? Math.round(aggViews[i] / total * 100) : 0;
+                legendEl.innerHTML += '<div class="traffic-legend-item">' +
+                    '<span class="traffic-legend-dot" style="background:' + colors[i] + '"></span>' +
+                    '<span class="traffic-legend-label">' + label + '</span>' +
+                    '<span class="traffic-legend-value">' + pct + '%</span>' +
+                    '</div>';
             });
         }
     }
