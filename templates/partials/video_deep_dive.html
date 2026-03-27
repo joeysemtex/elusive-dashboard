@@ -1,0 +1,195 @@
+<!-- Phase 3: Video Deep Dive partial (HTMX fragment — no extends) -->
+
+<a class="back-link"
+   hx-get="/creator/{{ creator.slug }}/tab/content"
+   hx-target="#tab-content" hx-swap="innerHTML">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+    Back to Content
+</a>
+
+<div class="deep-dive-hero">
+    <img class="deep-dive-thumb" src="{{ video.thumbnail_url }}" alt="{{ video.title }}">
+    <div>
+        <h2 style="font-size:18px;font-weight:600;margin-bottom:4px;">{{ video.title }}</h2>
+        <p class="text-muted" style="font-size:12px;margin-bottom:16px;">
+            {{ video.duration_seconds | format_duration }}
+            {% if video.published_at %} &middot; Published {{ video.published_at | timeago }}{% endif %}
+        </p>
+        <div class="deep-dive-metrics">
+            <div class="metric-card gold">
+                <div class="metric-label">Views</div>
+                <div class="metric-value">{{ video.views | format_number }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Likes</div>
+                <div class="metric-value">{{ video.likes | format_number }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Comments</div>
+                <div class="metric-value">{{ video.comments | format_number }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Engagement</div>
+                <div class="metric-value">{{ video.engagement_rate | format_percent }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg View Duration</div>
+                <div class="metric-value">{{ (analytics.avg_view_duration if analytics else 0) | format_duration }}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg % Viewed</div>
+                <div class="metric-value">{{ (analytics.avg_pct_viewed if analytics else 0) | format_percent }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if error == 'no_token' %}
+<div class="chart-container">
+    <p class="empty-state" style="padding:24px;">Cannot fetch analytics — YouTube token expired. The creator needs to re-login.</p>
+</div>
+{% endif %}
+
+<!-- Traffic Sources (horizontal bars) -->
+{% if deep_dive and deep_dive.traffic_sources %}
+<div class="chart-container">
+    <div class="chart-header">
+        <h3 class="chart-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="vertical-align:middle;margin-right:6px;"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+            Traffic Sources
+        </h3>
+    </div>
+    <div class="demo-bars" style="margin-top:12px;">
+        {% for src in deep_dive.traffic_sources[:8] %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ src.source }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ src.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-value" style="width:48px;">{{ src.percentage }}%</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% elif analytics and analytics.primary_traffic_source %}
+<div class="chart-container">
+    <div class="chart-header">
+        <h3 class="chart-title">Primary Traffic Source</h3>
+    </div>
+    <p style="font-size:16px;font-weight:600;margin-top:8px;">{{ analytics.primary_traffic_source }}</p>
+    <p class="text-muted" style="font-size:12px;margin-top:4px;">Full breakdown available on next refresh.</p>
+</div>
+{% endif %}
+
+<!-- Audience Retention Curve -->
+{% set retention = deep_dive.retention_curve if (deep_dive and deep_dive.retention_curve) else (analytics.retention_data if analytics and analytics.retention_data else []) %}
+{% if retention %}
+<div class="chart-container">
+    <div class="chart-header">
+        <h3 class="chart-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="vertical-align:middle;margin-right:6px;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Audience Retention
+            {% if analytics and analytics.relative_retention %}
+            <span class="period-badge {{ 'up' if analytics.relative_retention >= 50 else 'down' }}" style="margin-left:12px;">
+                {{ analytics.relative_retention }}% at midpoint
+            </span>
+            {% endif %}
+        </h3>
+    </div>
+    <div style="height:200px;">
+        <canvas id="retention-chart"></canvas>
+    </div>
+</div>
+<script>
+(function() {
+    var retentionData = {{ retention | tojson }};
+    if (!retentionData || !retentionData.length) return;
+    var ctx = document.getElementById('retention-chart');
+    if (!ctx) return;
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: retentionData.map(function(r) { return Math.round(r.elapsed_ratio * 100) + '%'; }),
+            datasets: [{
+                data: retentionData.map(function(r) { return r.retention_pct; }),
+                borderColor: '#C9A84C',
+                backgroundColor: '#C9A84C15',
+                fill: true,
+                tension: 0.2,
+                pointRadius: 0,
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1C1C1C',
+                    bodyFont: { family: 'IBM Plex Mono', size: 12 },
+                    padding: 8,
+                    cornerRadius: 6,
+                    callbacks: {
+                        label: function(ctx) { return ctx.raw.toFixed(1) + '% retained'; }
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 10 } },
+                y: {
+                    grid: { color: '#EBEBEB' },
+                    ticks: {
+                        font: { family: 'IBM Plex Mono', size: 11 },
+                        callback: function(v) { return v + '%'; }
+                    },
+                    min: 0,
+                    max: 100,
+                },
+            }
+        }
+    });
+})();
+</script>
+{% else %}
+<div class="chart-container">
+    <div class="chart-header">
+        <h3 class="chart-title">Audience Retention</h3>
+    </div>
+    <p class="empty-state" style="padding:24px;">Retention data not available for this video. This may be due to insufficient views or the video being too recent (YouTube Analytics has a 2-day processing delay).</p>
+</div>
+{% endif %}
+
+<!-- Per-video Demographics -->
+{% if deep_dive and deep_dive.demographics and (deep_dive.demographics.ageGroup or deep_dive.demographics.gender) %}
+<div class="audience-grid" style="margin-top:24px;">
+    {% if deep_dive.demographics.ageGroup %}
+    <div class="audience-panel">
+        <h3>Age Distribution</h3>
+        {% for age, pct in deep_dive.demographics.ageGroup.items() %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ age }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ pct }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ pct | round(1) }}%</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if deep_dive.demographics.gender %}
+    <div class="audience-panel">
+        <h3>Gender Split</h3>
+        {% for gender, pct in deep_dive.demographics.gender.items() %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ gender }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ pct }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ pct | round(1) }}%</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}

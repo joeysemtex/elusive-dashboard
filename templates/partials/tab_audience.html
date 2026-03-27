@@ -87,4 +87,21 @@
         <p class="empty-state">No device data yet. Run a sync to pull data.</p>
         {% endif %}
     </div>
+
+    <!-- Subscriber Status (Phase 3) -->
+    <div class="audience-panel">
+        <h3>Subscriber vs Non-Subscriber</h3>
+        {% for item in demographics.get("subscribedStatus", []) %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+        </div>
+        {% endfor %}
+        {% if not demographics.get("subscribedStatus") %}
+        <p class="empty-state">No subscriber status data yet. Run a sync to pull data.</p>
+        {% endif %}
+    </div>
 </div>

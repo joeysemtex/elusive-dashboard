@@ -1,0 +1,104 @@
+<!-- Phase 3: Content tab partial (HTMX fragment — no extends) -->
+
+<!-- Format Toggle -->
+<div class="format-toggle">
+    <button class="format-btn {{ 'active' if active_format == 'all' }}"
+            hx-get="/creator/{{ creator.slug }}/tab/content?format=all"
+            hx-target="#tab-content" hx-swap="innerHTML">
+        All ({{ total_all }})
+    </button>
+    <button class="format-btn {{ 'active' if active_format == 'longform' }}"
+            hx-get="/creator/{{ creator.slug }}/tab/content?format=longform"
+            hx-target="#tab-content" hx-swap="innerHTML">
+        Long Form ({{ total_long_form }})
+    </button>
+    <button class="format-btn {{ 'active' if active_format == 'shorts' }}"
+            hx-get="/creator/{{ creator.slug }}/tab/content?format=shorts"
+            hx-target="#tab-content" hx-swap="innerHTML">
+        Shorts ({{ total_shorts }})
+    </button>
+</div>
+
+<!-- Content Insights -->
+<div class="insights-bar">
+    <span><strong>{{ content_metrics.count }}</strong> videos</span>
+    <span><strong>{{ content_metrics.avg_views | format_number }}</strong> avg views</span>
+    <span><strong>{{ content_metrics.avg_engagement | format_percent }}</strong> avg engagement</span>
+    <span><strong>{{ content_metrics.avg_duration | format_duration }}</strong> avg duration</span>
+</div>
+
+<!-- Top 10 Performers -->
+{% if top_videos %}
+<h3 class="section-header">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    Top Performers
+</h3>
+<table class="perf-table">
+    <thead>
+        <tr>
+            <th>Video</th>
+            <th>Views</th>
+            <th>Engagement</th>
+            <th>Duration</th>
+            <th>Published</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for video in top_videos %}
+        <tr hx-get="/creator/{{ creator.slug }}/video/{{ video.video_id }}"
+            hx-target="#tab-content" hx-swap="innerHTML">
+            <td>
+                <div class="video-title-cell">
+                    <img class="video-thumb-sm" src="{{ video.thumbnail_url }}" alt="" loading="lazy">
+                    <span class="video-title-text">{{ video.title }}</span>
+                </div>
+            </td>
+            <td class="text-mono">{{ video.views | format_number }}</td>
+            <td>{{ video.engagement_rate | format_percent }}</td>
+            <td class="text-mono">{{ video.duration_seconds | format_duration }}</td>
+            <td class="text-muted">{{ video.published_at | timeago }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<!-- Bottom Performers -->
+{% if bottom_videos %}
+<h3 class="section-header" style="margin-top:32px;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--mid-gray)" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/></svg>
+    Underperformers
+</h3>
+<table class="perf-table">
+    <thead>
+        <tr>
+            <th>Video</th>
+            <th>Views</th>
+            <th>Engagement</th>
+            <th>Duration</th>
+            <th>Published</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for video in bottom_videos %}
+        <tr hx-get="/creator/{{ creator.slug }}/video/{{ video.video_id }}"
+            hx-target="#tab-content" hx-swap="innerHTML">
+            <td>
+                <div class="video-title-cell">
+                    <img class="video-thumb-sm" src="{{ video.thumbnail_url }}" alt="" loading="lazy">
+                    <span class="video-title-text">{{ video.title }}</span>
+                </div>
+            </td>
+            <td class="text-mono">{{ video.views | format_number }}</td>
+            <td>{{ video.engagement_rate | format_percent }}</td>
+            <td class="text-mono">{{ video.duration_seconds | format_duration }}</td>
+            <td class="text-muted">{{ video.published_at | timeago }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if not top_videos %}
+<p class="empty-state">No videos found. Run a sync to pull data.</p>
+{% endif %}

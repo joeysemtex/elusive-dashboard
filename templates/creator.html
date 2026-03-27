@@ -41,57 +41,19 @@
     </div>
 </div>
 
-<!-- Hero Metrics -->
-<div class="metrics-grid">
-    <div class="metric-card gold">
-        <div class="metric-label">Subscribers</div>
-        <div class="metric-value">{{ creator.yt_subscribers | format_number }}</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-label">30-Day Views</div>
-        <div class="metric-value">{{ creator.yt_30d_views | format_number }}</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-label">Engagement Rate</div>
-        <div class="metric-value">{{ creator.yt_engagement_rate | format_percent }}</div>
-        <div class="metric-change flat">Likes + comments / views</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-label">Avg View Duration</div>
-        <div class="metric-value">{{ creator.yt_avg_view_duration | format_duration }}</div>
-    </div>
-</div>
-
-<!-- Views Chart (30 days) -->
-{% if daily_stats %}
-<div class="chart-container">
-    <div class="chart-header">
-        <h3 class="chart-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="vertical-align:middle;margin-right:6px;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            Daily Views — Last 30 Days
-        </h3>
-    </div>
-    <div style="height:220px;">
-        <canvas id="views-chart"></canvas>
-    </div>
-</div>
-{% endif %}
-
 <!-- Tab Bar -->
 <div class="tab-bar">
     <button class="tab-btn active"
-            hx-get="/creator/{{ creator.slug }}/tab/longform"
+            hx-get="/creator/{{ creator.slug }}/tab/overview"
             hx-target="#tab-content"
             hx-swap="innerHTML">
-        Long Form
-        <span class="tab-count">{{ long_form_metrics.count }}</span>
+        Overview
     </button>
     <button class="tab-btn"
-            hx-get="/creator/{{ creator.slug }}/tab/shorts"
+            hx-get="/creator/{{ creator.slug }}/tab/content"
             hx-target="#tab-content"
             hx-swap="innerHTML">
-        Shorts
-        <span class="tab-count">{{ shorts_metrics.count }}</span>
+        Content
     </button>
     <button class="tab-btn"
             hx-get="/creator/{{ creator.slug }}/tab/audience"
@@ -99,10 +61,16 @@
             hx-swap="innerHTML">
         Audience
     </button>
+    <button class="tab-btn"
+            hx-get="/creator/{{ creator.slug }}/tab/traffic"
+            hx-target="#tab-content"
+            hx-swap="innerHTML">
+        Traffic
+    </button>
 </div>
 
 <div id="tab-content">
-    {% include "partials/tab_longform.html" %}
+    {% include "partials/tab_overview.html" %}
 </div>
 
 {% if creator.last_yt_sync %}
@@ -123,70 +91,6 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 </script>
-{% if daily_stats %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const ctx = document.getElementById('views-chart');
-    if (!ctx) return;
-
-    const labels = {{ daily_stats | map(attribute='date') | map('strftime', '%b %d') | list | tojson }};
-    const views = {{ daily_stats | map(attribute='views') | list | tojson }};
-
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                data: views,
-                backgroundColor: '#C9A84C20',
-                borderColor: '#C9A84C',
-                borderWidth: 1.5,
-                borderRadius: 4,
-                hoverBackgroundColor: '#C9A84C40',
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: '#1C1C1C',
-                    titleFont: { family: 'IBM Plex Sans', size: 12 },
-                    bodyFont: { family: 'IBM Plex Mono', size: 13 },
-                    padding: 10,
-                    cornerRadius: 6,
-                    callbacks: {
-                        label: function(ctx) {
-                            return ctx.raw.toLocaleString() + ' views';
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: { display: false },
-                    ticks: { font: { family: 'IBM Plex Sans', size: 10 }, color: '#6B6B6B', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
-                },
-                y: {
-                    grid: { color: '#EBEBEB', drawBorder: false },
-                    ticks: {
-                        font: { family: 'IBM Plex Mono', size: 11 },
-                        color: '#6B6B6B',
-                        callback: function(val) {
-                            if (val >= 1000000) return (val/1000000).toFixed(1) + 'M';
-                            if (val >= 1000) return (val/1000).toFixed(0) + 'K';
-                            return val;
-                        }
-                    },
-                    beginAtZero: true,
-                },
-            },
-        }
-    });
-});
-</script>
-{% endif %}
 
 {% if user.role == 'admin' %}
 <!-- Delete Creator Confirmation Modal -->

@@ -56,6 +56,8 @@ class Creator(Base):
     yt_30d_views = Column(Integer, default=0)
     yt_engagement_rate = Column(Float, default=0.0)
     yt_avg_view_duration = Column(Float, default=0.0)  # seconds
+    yt_watch_time_hours_30d = Column(Float, default=0.0)
+    yt_net_subscribers_30d = Column(Integer, default=0)
 
     ig_followers = Column(Integer, default=0)
     ig_reach_30d = Column(Integer, default=0)
@@ -72,6 +74,7 @@ class Creator(Base):
     user = relationship("User", back_populates="creator")
     youtube_stats = relationship("YouTubeStat", back_populates="creator", order_by="desc(YouTubeStat.date)")
     youtube_videos = relationship("YouTubeVideo", back_populates="creator", order_by="desc(YouTubeVideo.published_at)")
+    youtube_traffic_sources = relationship("YouTubeTrafficSource", back_populates="creator")
 
 
 class YouTubeStat(Base):
@@ -112,6 +115,7 @@ class YouTubeVideo(Base):
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
 
     creator = relationship("Creator", back_populates="youtube_videos")
+    analytics = relationship("YouTubeVideoAnalytics", back_populates="video", uselist=False)
 
 
 class YouTubeDemographic(Base):
@@ -120,7 +124,39 @@ class YouTubeDemographic(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     creator_id = Column(Integer, ForeignKey("creators.id"), nullable=False, index=True)
-    dimension = Column(String(50), nullable=False)  # "ageGroup", "gender", "country"
+    dimension = Column(String(50), nullable=False)  # "ageGroup", "gender", "country", "deviceType", "subscribedStatus"
     value = Column(String(100), nullable=False)       # e.g. "age25-34", "male", "US"
     percentage = Column(Float, default=0.0)
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class YouTubeVideoAnalytics(Base):
+    """Per-video deep-dive analytics from YouTube Analytics API."""
+    __tablename__ = "youtube_video_analytics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(Integer, ForeignKey("youtube_videos.id"), nullable=False, unique=True, index=True)
+    avg_view_duration = Column(Float, default=0.0)
+    avg_pct_viewed = Column(Float, default=0.0)
+    primary_traffic_source = Column(String(100), nullable=True)
+    retention_data = Column(JSON, nullable=True)
+    relative_retention = Column(Float, nullable=True)
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+
+    video = relationship("YouTubeVideo", back_populates="analytics")
+
+
+class YouTubeTrafficSource(Base):
+    """Channel-level and per-video traffic source data."""
+    __tablename__ = "youtube_traffic_sources"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    creator_id = Column(Integer, ForeignKey("creators.id"), nullable=False, index=True)
+    video_id = Column(Integer, ForeignKey("youtube_videos.id"), nullable=True, index=True)
+    date = Column(DateTime, nullable=True)
+    source_type = Column(String(100), nullable=False)
+    views = Column(Integer, default=0)
+    watch_time_minutes = Column(Float, default=0.0)
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+
+    creator = relationship("Creator", back_populates="youtube_traffic_sources")

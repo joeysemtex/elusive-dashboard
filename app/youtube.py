@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crypto import decrypt_token, encrypt_token
 from app.config import settings
-from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic
+from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic, YouTubeVideoAnalytics, YouTubeTrafficSource
 
 log = logging.getLogger("elusive.youtube")
 
@@ -108,7 +108,16 @@ async def sync_creator_youtube(creator: Creator, db: AsyncSession) -> bool:
         # 4. Demographics
         await _sync_demographics(creator, token, db)
 
-        # 5. Calculate engagement rate and trend
+        # 5. Subscribed status
+        await _sync_subscribed_status(creator, token, db)
+
+        # 6. Traffic sources
+        await _sync_traffic_sources(creator, token, db)
+
+        # 7. Per-video analytics (batch)
+        await _sync_video_analytics_batch(creator, token, db)
+
+        # 8. Calculate engagement rate and trend
         await _calculate_metrics(creator, db)
 
         creator.last_yt_sync = datetime.datetime.utcnow()
@@ -221,12 +230,12 @@ async def _sync_recent_videos(creator: Creator, token: str, db: AsyncSession):
 
 
 async def _sync_daily_stats(creator: Creator, token: str, db: AsyncSession):
-    """Pull daily analytics for the last 30 days."""
+    """Pull daily analytics for the last 60 days."""
     if not creator.youtube_channel_id:
         return
 
     end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=30)
+    start_date = end_date - datetime.timedelta(days=60)
 
     data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
@@ -355,6 +364,14 @@ async def _calculate_metrics(creator: Creator, db: AsyncSession):
         (total_watch_time * 60 / total_views) if total_views > 0 else 0.0
     )
 
+    # Watch time in hours (30 days)
+    creator.yt_watch_time_hours_30d = round(total_watch_time / 60, 1)
+
+    # Net subscribers (30 days)
+    total_gained = sum(s.subscribers_gained for s in stats)
+    total_lost = sum(s.subscribers_lost for s in stats)
+    creator.yt_net_subscribers_30d = total_gained - total_lost
+
     # Trend: compare last 15 days vs prior 15 days
     if len(stats) >= 20:
         recent = sum(s.views for s in stats[:15])
@@ -367,6 +384,243 @@ async def _calculate_metrics(creator: Creator, db: AsyncSession):
                 creator.trend_direction = "declining"
             else:
                 creator.trend_direction = "stable"
+
+
+async def _sync_subscribed_status(creator: Creator, token: str, db: AsyncSession):
+    """Pull subscriber vs non-subscriber view breakdown."""
+    if not creator.youtube_channel_id:
+        return
+
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=90)
+
+    # Remove old subscribedStatus demographics
+    await db.execute(
+        delete(YouTubeDemographic).where(
+            YouTubeDemographic.creator_id == creator.id,
+            YouTubeDemographic.dimension == "subscribedStatus",
+        )
+    )
+
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views",
+        "dimensions": "subscribedStatus",
+        "sort": "-views",
+    })
+    if not data or not data.get("rows"):
+        return
+
+    total = sum(int(r[1]) for r in data["rows"])
+    for row in data["rows"]:
+        pct = (int(row[1]) / total * 100) if total > 0 else 0
+        db.add(YouTubeDemographic(
+            creator_id=creator.id,
+            dimension="subscribedStatus",
+            value=row[0],
+            percentage=round(pct, 1),
+        ))
+
+
+async def _sync_traffic_sources(creator: Creator, token: str, db: AsyncSession):
+    """Pull channel-level traffic sources (aggregate + daily)."""
+    if not creator.youtube_channel_id:
+        return
+
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=30)
+
+    # Clear old channel-level traffic sources
+    await db.execute(
+        delete(YouTubeTrafficSource).where(
+            YouTubeTrafficSource.creator_id == creator.id,
+            YouTubeTrafficSource.video_id == None,
+        )
+    )
+
+    # 1. Aggregate traffic sources (no day dimension)
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views,estimatedMinutesWatched",
+        "dimensions": "insightTrafficSourceType",
+        "sort": "-views",
+    })
+    if data and data.get("rows"):
+        for row in data["rows"]:
+            db.add(YouTubeTrafficSource(
+                creator_id=creator.id,
+                video_id=None,
+                date=None,
+                source_type=row[0],
+                views=int(row[1]),
+                watch_time_minutes=float(row[2]),
+            ))
+
+    # 2. Daily traffic sources (for stacked area chart)
+    daily_data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views,estimatedMinutesWatched",
+        "dimensions": "day,insightTrafficSourceType",
+        "sort": "day",
+    })
+    if daily_data and daily_data.get("rows"):
+        for row in daily_data["rows"]:
+            day_date = datetime.datetime.strptime(row[0], "%Y-%m-%d")
+            db.add(YouTubeTrafficSource(
+                creator_id=creator.id,
+                video_id=None,
+                date=day_date,
+                source_type=row[1],
+                views=int(row[2]),
+                watch_time_minutes=float(row[3]),
+            ))
+
+
+async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSession):
+    """Batch-sync avg view duration for recent videos via Analytics API."""
+    if not creator.youtube_channel_id:
+        return
+
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=30)
+
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "averageViewDuration,averageViewPercentage",
+        "dimensions": "video",
+        "sort": "-views",
+        "maxResults": 50,
+    })
+    if not data or not data.get("rows"):
+        return
+
+    for row in data["rows"]:
+        yt_video_id = row[0]
+        avg_duration = float(row[1])
+        avg_pct = float(row[2])
+
+        # Find the YouTubeVideo record by video_id string
+        result = await db.execute(
+            select(YouTubeVideo).where(YouTubeVideo.video_id == yt_video_id)
+        )
+        video = result.scalar_one_or_none()
+        if not video:
+            continue
+
+        # Upsert YouTubeVideoAnalytics
+        result = await db.execute(
+            select(YouTubeVideoAnalytics).where(YouTubeVideoAnalytics.video_id == video.id)
+        )
+        analytics = result.scalar_one_or_none()
+        if analytics is None:
+            analytics = YouTubeVideoAnalytics(video_id=video.id)
+            db.add(analytics)
+        analytics.avg_view_duration = avg_duration
+        analytics.avg_pct_viewed = avg_pct
+        analytics.last_updated = datetime.datetime.utcnow()
+
+
+async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: AsyncSession) -> dict:
+    """On-demand: fetch traffic sources, retention, and demographics for a single video.
+    Returns a dict with all deep-dive data. Costs 3 API quota units."""
+    user = creator.user
+    token = await _get_valid_token(user, db)
+    if not token:
+        return {"error": "no_token"}
+
+    result = {}
+    end_date = datetime.date.today()
+    if video.published_at:
+        start_date = max(video.published_at.date(), end_date - datetime.timedelta(days=365))
+    else:
+        start_date = end_date - datetime.timedelta(days=90)
+
+    # 1. Traffic sources for this video
+    traffic_data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views,estimatedMinutesWatched",
+        "dimensions": "insightTrafficSourceType",
+        "filters": f"video=={video.video_id}",
+        "sort": "-views",
+    })
+    traffic_sources = []
+    if traffic_data and traffic_data.get("rows"):
+        total_views = sum(int(r[1]) for r in traffic_data["rows"])
+        for row in traffic_data["rows"]:
+            traffic_sources.append({
+                "source": row[0],
+                "views": int(row[1]),
+                "watch_time_minutes": float(row[2]),
+                "percentage": round(int(row[1]) / total_views * 100, 1) if total_views > 0 else 0,
+            })
+    result["traffic_sources"] = traffic_sources
+
+    # 2. Audience retention curve
+    retention_data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "audienceWatchRatio",
+        "dimensions": "elapsedVideoTimeRatio",
+        "filters": f"video=={video.video_id}",
+    })
+    retention_curve = []
+    if retention_data and retention_data.get("rows"):
+        for row in retention_data["rows"]:
+            retention_curve.append({
+                "elapsed_ratio": float(row[0]),
+                "retention_pct": round(float(row[1]) * 100, 1),
+            })
+    result["retention_curve"] = retention_curve
+
+    # 3. Per-video demographics (age+gender)
+    demo_data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "viewerPercentage",
+        "dimensions": "ageGroup,gender",
+        "filters": f"video=={video.video_id}",
+        "sort": "ageGroup,gender",
+    })
+    video_demographics = {"ageGroup": {}, "gender": {}}
+    if demo_data and demo_data.get("rows"):
+        for row in demo_data["rows"]:
+            age_group, gender, pct = row[0], row[1], float(row[2])
+            video_demographics["ageGroup"][age_group] = video_demographics["ageGroup"].get(age_group, 0) + pct
+            video_demographics["gender"][gender] = video_demographics["gender"].get(gender, 0) + pct
+    result["demographics"] = video_demographics
+
+    # Cache results in YouTubeVideoAnalytics
+    analytics_result = await db.execute(
+        select(YouTubeVideoAnalytics).where(YouTubeVideoAnalytics.video_id == video.id)
+    )
+    analytics = analytics_result.scalar_one_or_none()
+    if analytics is None:
+        analytics = YouTubeVideoAnalytics(video_id=video.id)
+        db.add(analytics)
+
+    if traffic_sources:
+        analytics.primary_traffic_source = traffic_sources[0]["source"]
+    if retention_curve:
+        analytics.retention_data = retention_curve
+        mid_points = [r for r in retention_curve if 0.45 <= r["elapsed_ratio"] <= 0.55]
+        if mid_points:
+            analytics.relative_retention = round(sum(r["retention_pct"] for r in mid_points) / len(mid_points), 1)
+    analytics.last_updated = datetime.datetime.utcnow()
+    await db.commit()
+
+    return result
 
 
 def _parse_duration(iso_duration: str) -> int:

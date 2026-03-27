@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic
+from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic, YouTubeVideoAnalytics, YouTubeTrafficSource
 
 router = APIRouter(prefix="/api", tags=["pipeline"])
 
@@ -247,6 +247,10 @@ async def delete_creator(
     user_id = creator.user_id
 
     # Delete related records first (no DB-level cascade configured)
+    # Video analytics (FK to youtube_videos.id) must be deleted before videos
+    video_ids_subq = select(YouTubeVideo.id).where(YouTubeVideo.creator_id == creator_id)
+    await db.execute(delete(YouTubeVideoAnalytics).where(YouTubeVideoAnalytics.video_id.in_(video_ids_subq)))
+    await db.execute(delete(YouTubeTrafficSource).where(YouTubeTrafficSource.creator_id == creator_id))
     await db.execute(delete(YouTubeDemographic).where(YouTubeDemographic.creator_id == creator_id))
     await db.execute(delete(YouTubeVideo).where(YouTubeVideo.creator_id == creator_id))
     await db.execute(delete(YouTubeStat).where(YouTubeStat.creator_id == creator_id))

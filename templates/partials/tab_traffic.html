@@ -1,0 +1,175 @@
+<!-- Phase 3: Traffic tab partial (HTMX fragment — no extends) -->
+
+<!-- Hero Metrics -->
+<div class="metrics-grid">
+    <div class="metric-card gold">
+        <div class="metric-label">Top Source</div>
+        <div class="metric-value" style="font-size:18px;">{{ traffic.top_source }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Search %</div>
+        <div class="metric-value">{{ traffic.search_pct }}%</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Algorithmic %</div>
+        <div class="metric-value">{{ traffic.algorithmic_pct }}%</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">External %</div>
+        <div class="metric-value">{{ traffic.external_pct }}%</div>
+    </div>
+</div>
+
+{% if traffic.aggregate %}
+<!-- Donut Chart -->
+<div class="chart-container">
+    <div class="chart-header">
+        <h3 class="chart-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="vertical-align:middle;margin-right:6px;"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+            Traffic Sources — Last 30 Days
+        </h3>
+    </div>
+    <div class="traffic-donut-wrap">
+        <canvas id="traffic-donut" width="240" height="240"></canvas>
+        <div class="traffic-legend" id="traffic-legend"></div>
+    </div>
+</div>
+
+<!-- Traffic Source Bars (fallback / additional detail) -->
+<div class="chart-container">
+    <div class="chart-header">
+        <h3 class="chart-title">Source Breakdown</h3>
+    </div>
+    <div class="demo-bars" style="margin-top:8px;">
+        {% for src in traffic.aggregate %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ src.source }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ (src.views / traffic.total_views * 100) if traffic.total_views > 0 else 0 }}%"></div>
+            </div>
+            <span class="demo-bar-value" style="width:64px;">{{ src.views | format_number }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Daily Traffic Trend -->
+{% if traffic.daily %}
+<div class="chart-container">
+    <div class="chart-header">
+        <h3 class="chart-title">Daily Traffic Sources</h3>
+    </div>
+    <div style="height:240px;">
+        <canvas id="traffic-daily-chart"></canvas>
+    </div>
+</div>
+{% endif %}
+
+<script>
+(function() {
+    var colors = ['#C9A84C','#6B6B6B','#2ECC71','#E67E22','#E74C3C','#3498DB','#9B59B6','#1ABC9C','#F39C12','#95A5A6'];
+
+    // Donut chart
+    var agg = {{ traffic.aggregate | map(attribute='source') | list | tojson }};
+    var aggViews = {{ traffic.aggregate | map(attribute='views') | list | tojson }};
+
+    var donutCtx = document.getElementById('traffic-donut');
+    if (donutCtx && agg.length > 0) {
+        new Chart(donutCtx, {
+            type: 'doughnut',
+            data: {
+                labels: agg,
+                datasets: [{
+                    data: aggViews,
+                    backgroundColor: colors.slice(0, agg.length),
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1C1C1C',
+                        bodyFont: { family: 'IBM Plex Mono', size: 12 },
+                        padding: 8,
+                        cornerRadius: 6,
+                        callbacks: {
+                            label: function(ctx) {
+                                var total = ctx.dataset.data.reduce(function(a,b){return a+b;}, 0);
+                                var pct = total > 0 ? Math.round(ctx.raw / total * 100) : 0;
+                                return ctx.label + ': ' + ctx.raw.toLocaleString() + ' (' + pct + '%)';
+                            }
+                        }
+                    }
+                },
+                cutout: '60%',
+            }
+        });
+        // Build legend
+        var legendEl = document.getElementById('traffic-legend');
+        if (legendEl) {
+            agg.forEach(function(label, i) {
+                legendEl.innerHTML += '<div class="traffic-legend-item"><span class="traffic-legend-dot" style="background:' + colors[i] + '"></span>' + label + ' (' + aggViews[i].toLocaleString() + ')</div>';
+            });
+        }
+    }
+
+    // Daily stacked area chart
+    var dailyRaw = {{ traffic.daily | tojson }};
+    var dailyCtx = document.getElementById('traffic-daily-chart');
+    if (dailyCtx && dailyRaw.length > 0) {
+        // Pivot: unique dates and source types
+        var dates = [];
+        var sourceMap = {};
+        dailyRaw.forEach(function(d) {
+            if (dates.indexOf(d.date) === -1) dates.push(d.date);
+            if (!sourceMap[d.source]) sourceMap[d.source] = {};
+            sourceMap[d.source][d.date] = (sourceMap[d.source][d.date] || 0) + d.views;
+        });
+
+        var sourceNames = Object.keys(sourceMap);
+        var datasets = sourceNames.map(function(name, i) {
+            return {
+                label: name,
+                data: dates.map(function(d) { return sourceMap[name][d] || 0; }),
+                backgroundColor: colors[i % colors.length] + '40',
+                borderColor: colors[i % colors.length],
+                borderWidth: 1,
+                fill: true,
+                tension: 0.3,
+                pointRadius: 0,
+            };
+        });
+
+        new Chart(dailyCtx, {
+            type: 'line',
+            data: { labels: dates, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, position: 'top', labels: { font: { family: 'IBM Plex Sans', size: 10 }, boxWidth: 10, padding: 8 } },
+                    tooltip: { backgroundColor: '#1C1C1C', bodyFont: { family: 'IBM Plex Mono', size: 11 }, padding: 8, cornerRadius: 6 }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 10 } },
+                    y: {
+                        stacked: true,
+                        grid: { color: '#EBEBEB' },
+                        ticks: {
+                            font: { family: 'IBM Plex Mono', size: 11 },
+                            callback: function(v) { return v >= 1000 ? (v/1000).toFixed(0) + 'K' : v; }
+                        },
+                        beginAtZero: true,
+                    }
+                }
+            }
+        });
+    }
+})();
+</script>
+{% else %}
+<p class="empty-state">No traffic data yet. Run a sync to pull data.</p>
+{% endif %}
