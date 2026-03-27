@@ -27,40 +27,42 @@
     <span><strong>{{ content_metrics.avg_duration | format_duration }}</strong> avg duration</span>
 </div>
 
-<!-- Top 10 Performers -->
+<!-- Top Performers -->
 {% if top_videos %}
 <h3 class="section-header">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
     Top Performers
 </h3>
-<table class="perf-table">
-    <thead>
-        <tr>
-            <th>Video</th>
-            <th>Views</th>
-            <th>Engagement</th>
-            <th>Duration</th>
-            <th>Published</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for video in top_videos %}
-        <tr hx-get="/creator/{{ creator.slug }}/video/{{ video.video_id }}"
-            hx-target="#tab-content" hx-swap="innerHTML">
-            <td>
-                <div class="video-title-cell">
-                    <img class="video-thumb-sm" src="{{ video.thumbnail_url }}" alt="" loading="lazy">
-                    <span class="video-title-text">{{ video.title }}</span>
-                </div>
-            </td>
-            <td class="text-mono">{{ video.views | format_number }}</td>
-            <td>{{ video.engagement_rate | format_percent }}</td>
-            <td class="text-mono">{{ video.duration_seconds | format_duration }}</td>
-            <td class="text-muted">{{ video.published_at | timeago }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="video-feed video-feed--top">
+    {% for video in top_videos %}
+    <div class="video-feed-row"
+         hx-get="/creator/{{ creator.slug }}/video/{{ video.video_id }}"
+         hx-target="#tab-content" hx-swap="innerHTML">
+        <div class="video-feed-thumb">
+            <img src="{{ video.thumbnail_url }}" alt="" loading="lazy">
+            <span class="video-feed-duration">{{ video.duration_seconds | format_duration }}</span>
+        </div>
+        <div class="video-feed-meta">
+            <span class="video-feed-title">{{ video.title }}</span>
+            <span class="video-feed-date">{{ video.published_at | timeago }}</span>
+        </div>
+        <div class="video-feed-stats">
+            <div class="video-feed-stat">
+                <span class="video-feed-stat-value">{{ video.views | format_number }}</span>
+                <span class="video-feed-stat-label">Views</span>
+            </div>
+            <div class="video-feed-stat">
+                <span class="video-feed-stat-value">{{ video.engagement_rate | format_percent }}</span>
+                <span class="video-feed-stat-label">Engage</span>
+            </div>
+            <div class="video-feed-stat">
+                <span class="video-feed-stat-value">{{ video.duration_seconds | format_duration }}</span>
+                <span class="video-feed-stat-label">Duration</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
 {% endif %}
 
 <!-- Bottom Performers -->
@@ -69,34 +71,36 @@
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--mid-gray)" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/></svg>
     Underperformers
 </h3>
-<table class="perf-table">
-    <thead>
-        <tr>
-            <th>Video</th>
-            <th>Views</th>
-            <th>Engagement</th>
-            <th>Duration</th>
-            <th>Published</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for video in bottom_videos %}
-        <tr hx-get="/creator/{{ creator.slug }}/video/{{ video.video_id }}"
-            hx-target="#tab-content" hx-swap="innerHTML">
-            <td>
-                <div class="video-title-cell">
-                    <img class="video-thumb-sm" src="{{ video.thumbnail_url }}" alt="" loading="lazy">
-                    <span class="video-title-text">{{ video.title }}</span>
-                </div>
-            </td>
-            <td class="text-mono">{{ video.views | format_number }}</td>
-            <td>{{ video.engagement_rate | format_percent }}</td>
-            <td class="text-mono">{{ video.duration_seconds | format_duration }}</td>
-            <td class="text-muted">{{ video.published_at | timeago }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="video-feed video-feed--bottom">
+    {% for video in bottom_videos %}
+    <div class="video-feed-row"
+         hx-get="/creator/{{ creator.slug }}/video/{{ video.video_id }}"
+         hx-target="#tab-content" hx-swap="innerHTML">
+        <div class="video-feed-thumb">
+            <img src="{{ video.thumbnail_url }}" alt="" loading="lazy">
+            <span class="video-feed-duration">{{ video.duration_seconds | format_duration }}</span>
+        </div>
+        <div class="video-feed-meta">
+            <span class="video-feed-title">{{ video.title }}</span>
+            <span class="video-feed-date">{{ video.published_at | timeago }}</span>
+        </div>
+        <div class="video-feed-stats">
+            <div class="video-feed-stat">
+                <span class="video-feed-stat-value">{{ video.views | format_number }}</span>
+                <span class="video-feed-stat-label">Views</span>
+            </div>
+            <div class="video-feed-stat">
+                <span class="video-feed-stat-value">{{ video.engagement_rate | format_percent }}</span>
+                <span class="video-feed-stat-label">Engage</span>
+            </div>
+            <div class="video-feed-stat">
+                <span class="video-feed-stat-value">{{ video.duration_seconds | format_duration }}</span>
+                <span class="video-feed-stat-label">Duration</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
 {% endif %}
 
 {% if not top_videos %}

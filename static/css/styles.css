@@ -947,76 +947,110 @@ a:hover { color: var(--gold-light); }
     color: #fff;
 }
 
-/* --- Phase 3: Performance Table --- */
-.perf-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
+/* --- Phase 3: Video Feed (Content Tab) --- */
+.video-feed {
     background: var(--surface);
     border-radius: var(--radius);
-    overflow: hidden;
     box-shadow: var(--shadow-card);
-    margin-bottom: 16px;
-    table-layout: fixed;
+    overflow: hidden;
 }
 
-.perf-table thead th {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--mid-gray);
-    padding: 14px 20px;
-    text-align: left;
-    border-bottom: 2px solid var(--light-gray);
-    background: var(--bg);
-}
+.video-feed--top .video-feed-row { border-left: 3px solid var(--gold); }
+.video-feed--bottom .video-feed-row { border-left: 3px solid var(--danger); }
 
-.perf-table thead th:first-child { width: 48%; }
-.perf-table thead th:nth-child(2) { width: 14%; }
-.perf-table thead th:nth-child(3) { width: 14%; }
-.perf-table thead th:nth-child(4) { width: 12%; }
-.perf-table thead th:nth-child(5) { width: 12%; }
-
-.perf-table tbody tr {
+.video-feed-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px 12px 16px;
+    border-bottom: 1px solid var(--light-gray);
     cursor: pointer;
     transition: background var(--transition);
 }
 
-.perf-table tbody tr:hover { background: var(--gold-subtle); }
+.video-feed-row:last-child { border-bottom: none; }
+.video-feed-row:hover { background: var(--gold-subtle); }
 
-.perf-table tbody td {
-    padding: 16px 20px;
-    font-size: 13px;
-    border-bottom: 1px solid var(--light-gray);
-    vertical-align: middle;
-}
-
-.perf-table tbody tr:last-child td { border-bottom: none; }
-
-.perf-table .video-thumb-sm {
-    width: 100px;
-    height: 56px;
-    border-radius: var(--radius-sm);
-    object-fit: cover;
+.video-feed-thumb {
+    position: relative;
+    width: 160px;
+    height: 90px;
     flex-shrink: 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
 }
 
-.perf-table .video-title-cell {
-    display: flex;
-    align-items: center;
-    gap: 14px;
+.video-feed-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.video-feed-duration {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 1px 5px;
+    border-radius: 3px;
+    line-height: 1.4;
+}
+
+.video-feed-meta {
+    flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
-.perf-table .video-title-text {
+.video-feed-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--charcoal);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.video-feed-date {
+    font-size: 12px;
+    color: var(--mid-gray);
+}
+
+.video-feed-stats {
+    display: flex;
+    gap: 24px;
+    flex-shrink: 0;
+}
+
+.video-feed-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 1px;
+    min-width: 64px;
+}
+
+.video-feed-stat-value {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--charcoal);
+    line-height: 1.2;
+}
+
+.video-feed-stat-label {
+    font-size: 10px;
     font-weight: 500;
-    flex: 1;
-    min-width: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--mid-gray);
 }
 
 /* --- Phase 3: Back Link --- */
@@ -1232,7 +1266,9 @@ a:hover { color: var(--gold-light); }
     .deep-dive-metrics { grid-template-columns: repeat(2, 1fr); }
     .traffic-donut-wrap { flex-direction: column; align-items: stretch; }
     .traffic-donut-container { align-self: center; }
-    .perf-table .video-title-text { max-width: 160px; }
+    .video-feed-row { flex-wrap: wrap; gap: 10px; }
+    .video-feed-thumb { width: 120px; height: 68px; }
+    .video-feed-stats { width: 100%; justify-content: flex-end; padding-left: 136px; }
     .insights-bar { flex-direction: column; gap: 8px; }
 }
 
