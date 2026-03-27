@@ -17,6 +17,9 @@ class Settings:
     PIPELINE_API_KEY: str = os.getenv("PIPELINE_API_KEY", secrets.token_hex(16))
     YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
     ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "josephjsemaan@gmail.com")
+    VIEWER_EMAILS: list = [
+        e.strip() for e in os.getenv("VIEWER_EMAILS", "").split(",") if e.strip()
+    ]
     YOUTUBE_REFRESH_HOURS: int = 6
 
     @property

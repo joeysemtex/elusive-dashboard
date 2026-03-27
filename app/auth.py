@@ -68,7 +68,12 @@ async def handle_google_callback(request: Request, db: AsyncSession) -> User:
 
     if user is None:
         # Determine role
-        role = "admin" if email == settings.ADMIN_EMAIL else "creator"
+        if email == settings.ADMIN_EMAIL:
+            role = "admin"
+        elif email in settings.VIEWER_EMAILS:
+            role = "viewer"
+        else:
+            role = "creator"
 
         user = User(
             email=email,
@@ -83,7 +88,7 @@ async def handle_google_callback(request: Request, db: AsyncSession) -> User:
         db.add(user)
         await db.flush()
 
-        # Auto-create a creator profile for non-admin users
+        # Auto-create a creator profile for creator users only
         if role == "creator":
             slug = email.split("@")[0].lower().replace(".", "-")
             creator = Creator(

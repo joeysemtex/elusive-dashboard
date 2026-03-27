@@ -11,10 +11,12 @@
             <span class="sync-dot"></span>
             Auto-refresh every 6h
         </div>
+        {% if user.role == 'admin' %}
         <button class="btn btn-outline btn-sm" onclick="document.getElementById('add-creator-modal').style.display='flex'">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add Creator
         </button>
+        {% endif %}
     </div>
 </div>
 

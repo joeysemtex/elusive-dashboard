@@ -137,7 +137,7 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
     if not user:
         return RedirectResponse("/login")
 
-    if user.role == "admin":
+    if user.role in ("admin", "viewer"):
         return RedirectResponse("/dashboard")
     else:
         # Creator goes to their own dashboard
@@ -204,8 +204,8 @@ async def agency_dashboard(request: Request, db: AsyncSession = Depends(get_db))
     if not user:
         return RedirectResponse("/login")
 
-    # Only admin can see agency dashboard
-    if user.role != "admin":
+    # Admin and viewer can see agency dashboard
+    if user.role not in ("admin", "viewer"):
         return RedirectResponse("/")
 
     result = await db.execute(
@@ -259,7 +259,7 @@ async def _get_creator_for_request(slug: str, request: Request, db: AsyncSession
     creator = result.scalar_one_or_none()
     if not creator:
         raise HTTPException(status_code=404)
-    if user.role != "admin" and creator.user_id != user.id:
+    if user.role not in ("admin", "viewer") and creator.user_id != user.id:
         raise HTTPException(status_code=403)
     return user, creator
 
@@ -415,8 +415,8 @@ async def creator_dashboard(slug: str, request: Request, db: AsyncSession = Depe
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
 
-    # Creators can only see their own dashboard (admin can see all)
-    if user.role != "admin":
+    # Creators can only see their own dashboard (admin + viewer can see all)
+    if user.role not in ("admin", "viewer"):
         if not creator.user_id == user.id:
             raise HTTPException(status_code=403, detail="Access denied")
 
@@ -604,9 +604,9 @@ async def video_deep_dive(slug: str, video_id: str, request: Request, db: AsyncS
 
 @app.post("/admin/sync/{creator_id}")
 async def trigger_sync(creator_id: int, request: Request, db: AsyncSession = Depends(get_db)):
-    """Admin: manually trigger YouTube sync for a creator."""
+    """Admin/viewer: manually trigger YouTube sync for a creator."""
     user = await get_current_user(request, db)
-    if not user or user.role != "admin":
+    if not user or user.role not in ("admin", "viewer"):
         raise HTTPException(status_code=403)
 
     result = await db.execute(select(Creator).where(Creator.id == creator_id))
