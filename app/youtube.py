@@ -527,6 +527,8 @@ async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSes
         analytics.avg_pct_viewed = avg_pct
         analytics.last_updated = datetime.datetime.utcnow()
 
+    await db.commit()  # was missing — without this all avg writes are silently discarded
+
 
 async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: AsyncSession) -> dict:
     """On-demand: fetch traffic sources, retention, and demographics for a single video.

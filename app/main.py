@@ -576,17 +576,19 @@ async def video_deep_dive(slug: str, video_id: str, request: Request, db: AsyncS
     await db.refresh(creator, ["user"])
 
     if needs_fetch:
-        deep_dive, pulse = await asyncio.gather(
-            fetch_video_deep_dive(video, creator, db),
-            fetch_video_comments(video, creator, db),
-        )
+        # Sequential — SQLAlchemy AsyncSession is NOT safe for concurrent use.
+        # asyncio.gather() with the same session causes silent failures when
+        # one coroutine commits while the other is mid-query.
+        deep_dive = await fetch_video_deep_dive(video, creator, db)
         if not deep_dive.get("error"):
             analytics_result = await db.execute(
                 select(YouTubeVideoAnalytics).where(YouTubeVideoAnalytics.video_id == video.id)
             )
             analytics = analytics_result.scalar_one_or_none()
     else:
-        pulse = await fetch_video_comments(video, creator, db)
+        deep_dive = None
+
+    pulse = await fetch_video_comments(video, creator, db)
 
     return templates.TemplateResponse(request, "partials/video_deep_dive.html", {
         "creator": creator,
