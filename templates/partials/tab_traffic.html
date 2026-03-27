@@ -69,7 +69,9 @@
     var treemapCtx = document.getElementById('traffic-treemap');
 
     if (treemapCtx && agg.length > 0) {
-        var treemapData = agg.map(function(d, i) {
+        // Filter out zero-view sources before building data + legend
+        var aggFiltered = agg.filter(function(d) { return d.views > 0; });
+        var treemapData = aggFiltered.map(function(d, i) {
             return {
                 source: d.source,
                 views: d.views,
@@ -159,10 +161,10 @@
             }
         });
 
-        // Build compact legend
+        // Build compact legend — only show sources with data
         var legendEl = document.getElementById('treemap-legend');
         if (legendEl) {
-            treemapData.forEach(function(d) {
+            treemapData.filter(function(d) { return d.pct > 0; }).forEach(function(d) {
                 legendEl.innerHTML += '<div class="treemap-legend-item">' +
                     '<span class="treemap-legend-dot" style="background:' + d.color + '"></span>' +
                     '<span class="treemap-legend-label">' + d.source + '</span>' +
