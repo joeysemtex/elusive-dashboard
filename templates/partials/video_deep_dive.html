@@ -161,6 +161,58 @@
 {% endif %}
 
 <!-- Per-video Demographics -->
+<!-- Community Pulse -->
+{% if pulse and pulse.comments %}
+<div class="chart-container" style="margin-top:24px;">
+    <div class="chart-header" style="margin-bottom:16px;">
+        <h3 class="chart-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" style="vertical-align:middle;margin-right:6px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Community Pulse
+        </h3>
+        {% if pulse.sentiment %}
+        <span class="period-badge pulse-sentiment-{{ pulse.sentiment }}">
+            {% if pulse.sentiment == 'positive' %}▲{% elif pulse.sentiment == 'negative' %}▼{% else %}~{% endif %}
+            {{ pulse.sentiment | title }}
+        </span>
+        {% endif %}
+    </div>
+
+    {% if pulse.sponsor_flag %}
+    <div class="pulse-sponsor-alert">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Sponsor mentions detected — review sentiment before pitching a similar category deal.</span>
+    </div>
+    {% endif %}
+
+    <!-- Top 5 most-liked comments -->
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+        {% for comment in pulse.comments %}
+        <div class="pulse-comment-card">
+            <div class="pulse-comment-meta">
+                <span class="pulse-comment-author">{{ comment.author }}</span>
+                <span class="pulse-comment-likes">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--gold)" style="vertical-align:middle;margin-right:3px;"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><rect x="2" y="9" width="4" height="11" rx="1"/></svg>
+                    {{ comment.likes | format_number }}
+                    {% if comment.published_at %} &middot; {{ comment.published_at | timeago }}{% endif %}
+                </span>
+            </div>
+            <p class="pulse-comment-text">{{ comment.text | striptags | truncate(200) }}</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if pulse.phrases and pulse.all_count >= 5 %}
+    <!-- Top Phrases -->
+    <div class="pulse-phrases-label">Top Phrases</div>
+    <div class="pulse-phrases">
+        {% for p in pulse.phrases %}
+        <span class="phrase-tag">{{ p.word }} <strong>{{ p.count }}</strong></span>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
 {% if deep_dive and deep_dive.demographics and (deep_dive.demographics.ageGroup or deep_dive.demographics.gender) %}
 <div class="audience-grid" style="margin-top:24px;">
     {% if deep_dive.demographics.ageGroup %}

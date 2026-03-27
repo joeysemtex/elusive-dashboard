@@ -643,3 +643,101 @@ def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime.datetime]:
         return datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00")).replace(tzinfo=None)
     except ValueError:
         return None
+
+
+# --- Community Pulse ---
+
+_POSITIVE_SIGNALS = {
+    "love", "great", "amazing", "best", "fire", "more of this", "finally",
+    "needed this", "keep it up", "underrated", "goat", "banger", "perfect", "helpful",
+}
+_NEGATIVE_SIGNALS = {
+    "boring", "skip", "waste", "clickbait", "misleading", "unsubscribe",
+    "disappointed", "bad", "worst", "stop", "irrelevant", "too long", "didn't finish",
+}
+_SPONSOR_SIGNALS = {"sponsor", "sponsored", "ad", "paid", "#ad"}
+_STOPWORDS = {
+    "the", "a", "an", "is", "it", "i", "this", "to", "and", "of", "in", "for",
+    "that", "you", "my", "was", "are", "have", "not", "with", "on", "at", "be",
+    "your", "we", "they", "but", "or", "so", "as", "from", "get", "all",
+}
+
+
+def _process_community_pulse(comments: list[dict]) -> dict:
+    """Compute sentiment badge, top phrases, and sponsor flag from fetched comments."""
+    from collections import Counter
+
+    pos_weight = neg_weight = 0
+    sponsor_mentions = 0
+    all_words: list[str] = []
+
+    for c in comments:
+        text_lower = c["text"].lower()
+        weight = max(c["likes"], 1)
+        if any(sig in text_lower for sig in _POSITIVE_SIGNALS):
+            pos_weight += weight
+        if any(sig in text_lower for sig in _NEGATIVE_SIGNALS):
+            neg_weight += weight
+        if any(sig in text_lower for sig in _SPONSOR_SIGNALS):
+            sponsor_mentions += 1
+        words = [
+            w for w in text_lower.split()
+            if w not in _STOPWORDS and len(w) > 3 and w.isalpha()
+        ]
+        all_words.extend(words)
+
+    total_weight = pos_weight + neg_weight
+    if total_weight == 0:
+        sentiment = None
+    elif pos_weight / total_weight >= 0.6:
+        sentiment = "positive"
+    elif pos_weight / total_weight >= 0.4:
+        sentiment = "mixed"
+    else:
+        sentiment = "negative"
+
+    phrase_counts = Counter(all_words).most_common(8)
+    phrases = [{"word": w, "count": c} for w, c in phrase_counts]
+
+    sponsor_flag = (sponsor_mentions / max(len(comments), 1)) > 0.03
+
+    return {
+        "comments": comments[:5],
+        "all_count": len(comments),
+        "sentiment": sentiment,
+        "phrases": phrases,
+        "sponsor_flag": sponsor_flag,
+    }
+
+
+async def fetch_video_comments(video: "YouTubeVideo", creator: "Creator", db: "AsyncSession") -> dict:
+    """On-demand: fetch top comments for Community Pulse. 1 quota unit. Not cached."""
+    user = creator.user
+    token = await _get_valid_token(user, db)
+    if not token:
+        return {"comments": [], "sentiment": None, "phrases": [], "sponsor_flag": False}
+
+    data = await _yt_get(token, "commentThreads", {
+        "part": "snippet",
+        "videoId": video.video_id,
+        "order": "relevance",
+        "maxResults": 20,
+    })
+
+    # commentThreads returns 403 commentsDisabled if comments are off — _yt_get returns None
+    if not data or not data.get("items"):
+        return {"comments": [], "sentiment": None, "phrases": [], "sponsor_flag": False}
+
+    comments = []
+    for item in data["items"]:
+        s = item["snippet"]["topLevelComment"]["snippet"]
+        comments.append({
+            "text": s.get("textDisplay", ""),
+            "likes": int(s.get("likeCount", 0)),
+            "author": s.get("authorDisplayName", ""),
+            "published_at": _parse_datetime(s.get("publishedAt")),
+        })
+
+    # Sort by likes descending (relevance order already surfaces engaged comments)
+    comments.sort(key=lambda c: c["likes"], reverse=True)
+    return _process_community_pulse(comments)

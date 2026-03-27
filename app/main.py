@@ -1,4 +1,5 @@
 """Elusive Analytics Dashboard — FastAPI application."""
+import asyncio
 import datetime
 import logging
 from contextlib import asynccontextmanager
@@ -18,7 +19,7 @@ from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemograp
 from app.auth import handle_google_login, handle_google_callback
 from app.api import router as api_router
 from app.scheduler import start_scheduler, stop_scheduler
-from app.youtube import sync_creator_youtube, fetch_video_deep_dive
+from app.youtube import sync_creator_youtube, fetch_video_deep_dive, fetch_video_comments
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("elusive")
@@ -572,20 +573,27 @@ async def video_deep_dive(slug: str, video_id: str, request: Request, db: AsyncS
         or (datetime.datetime.utcnow() - analytics.last_updated).total_seconds() > 21600
     )
 
+    await db.refresh(creator, ["user"])
+
     if needs_fetch:
-        await db.refresh(creator, ["user"])
-        deep_dive = await fetch_video_deep_dive(video, creator, db)
+        deep_dive, pulse = await asyncio.gather(
+            fetch_video_deep_dive(video, creator, db),
+            fetch_video_comments(video, creator, db),
+        )
         if not deep_dive.get("error"):
             analytics_result = await db.execute(
                 select(YouTubeVideoAnalytics).where(YouTubeVideoAnalytics.video_id == video.id)
             )
             analytics = analytics_result.scalar_one_or_none()
+    else:
+        pulse = await fetch_video_comments(video, creator, db)
 
     return templates.TemplateResponse(request, "partials/video_deep_dive.html", {
         "creator": creator,
         "video": video,
         "analytics": analytics,
         "deep_dive": deep_dive,
+        "pulse": pulse,
         "error": deep_dive.get("error") if deep_dive else None,
     })
 
