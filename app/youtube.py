@@ -730,18 +730,32 @@ def _process_community_pulse(comments: list[dict]) -> dict:
 
 
 async def fetch_video_comments(video: "YouTubeVideo", creator: "Creator", db: "AsyncSession") -> dict:
-    """On-demand: fetch top comments for Community Pulse. 1 quota unit. Not cached."""
-    user = creator.user
-    token = await _get_valid_token(user, db)
-    if not token:
+    """On-demand: fetch top comments for Community Pulse. 1 quota unit. Not cached.
+    Uses API key (not OAuth) — commentThreads.list on public videos doesn't need
+    user-level auth, and avoids requiring the youtube.force-ssl scope."""
+    from app.config import settings
+    api_key = settings.YOUTUBE_API_KEY
+    if not api_key:
+        log.warning("YOUTUBE_API_KEY not set — Community Pulse disabled")
         return {"comments": [], "sentiment": None, "phrases": [], "sponsor_flag": False}
 
-    data = await _yt_get(token, "commentThreads", {
-        "part": "snippet",
-        "videoId": video.video_id,
-        "order": "relevance",
-        "maxResults": 20,
-    })
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{YT_DATA_BASE}/commentThreads",
+            params={
+                "part": "snippet",
+                "videoId": video.video_id,
+                "order": "relevance",
+                "maxResults": 20,
+                "key": api_key,
+            },
+            timeout=30,
+        )
+    if resp.status_code != 200:
+        log.error(f"Comments API error {resp.status_code}: {resp.text[:200]}")
+        data = None
+    else:
+        data = resp.json()
 
     # commentThreads returns 403 commentsDisabled if comments are off — _yt_get returns None
     if not data or not data.get("items"):

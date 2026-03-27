@@ -15,6 +15,7 @@ class Settings:
     FERNET_KEY: str = os.getenv("FERNET_KEY", "")
     BASE_URL: str = os.getenv("BASE_URL", "http://localhost:8000")
     PIPELINE_API_KEY: str = os.getenv("PIPELINE_API_KEY", secrets.token_hex(16))
+    YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")
     ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "josephjsemaan@gmail.com")
     YOUTUBE_REFRESH_HOURS: int = 6
 
