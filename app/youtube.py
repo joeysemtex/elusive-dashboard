@@ -494,7 +494,7 @@ async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSes
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "metrics": "averageViewDuration,averageViewPercentage",
+        "metrics": "views,averageViewDuration,averageViewPercentage",
         "dimensions": "video",
         "sort": "-views",
         "maxResults": 50,
@@ -504,8 +504,9 @@ async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSes
 
     for row in data["rows"]:
         yt_video_id = row[0]
-        avg_duration = float(row[1])
-        avg_pct = float(row[2])
+        # row[1] = views (used for sort), row[2] = avgDuration, row[3] = avgPct
+        avg_duration = float(row[2])
+        avg_pct = float(row[3])
 
         # Find the YouTubeVideo record by video_id string
         result = await db.execute(
@@ -603,6 +604,20 @@ async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: Async
             video_demographics["gender"][gender] = video_demographics["gender"].get(gender, 0) + pct
     result["demographics"] = video_demographics
 
+    # 4. Per-video avg view duration and avg % viewed
+    avg_data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "averageViewDuration,averageViewPercentage",
+        "filters": f"video=={video.video_id}",
+    })
+    avg_view_duration = 0.0
+    avg_pct_viewed = 0.0
+    if avg_data and avg_data.get("rows") and avg_data["rows"]:
+        avg_view_duration = float(avg_data["rows"][0][0])
+        avg_pct_viewed = float(avg_data["rows"][0][1])
+
     # Cache results in YouTubeVideoAnalytics
     analytics_result = await db.execute(
         select(YouTubeVideoAnalytics).where(YouTubeVideoAnalytics.video_id == video.id)
@@ -619,6 +634,8 @@ async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: Async
         mid_points = [r for r in retention_curve if 0.45 <= r["elapsed_ratio"] <= 0.55]
         if mid_points:
             analytics.relative_retention = round(sum(r["retention_pct"] for r in mid_points) / len(mid_points), 1)
+    analytics.avg_view_duration = avg_view_duration
+    analytics.avg_pct_viewed = avg_pct_viewed
     analytics.last_updated = datetime.datetime.utcnow()
     await db.commit()
 
