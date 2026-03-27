@@ -1151,79 +1151,81 @@ a:hover { color: var(--gold-light); }
 .deep-dive-metrics .metric-card { padding: 16px; }
 .deep-dive-metrics .metric-value { font-size: 20px; }
 
-/* --- Phase 3: Traffic Donut --- */
-.traffic-donut-wrap {
-    display: flex;
-    align-items: center;
-    gap: 48px;
-    margin-bottom: 24px;
-}
-
-.traffic-donut-container {
-    position: relative;
-    width: 220px;
-    height: 220px;
-    flex-shrink: 0;
-}
-
-.traffic-donut-container canvas { width: 220px !important; height: 220px !important; }
-
-.traffic-donut-center {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-}
-
-.traffic-donut-center-value {
+/* --- Phase 3: Traffic Treemap --- */
+.chart-subtitle {
     font-family: var(--font-mono);
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--charcoal);
-    line-height: 1.2;
-}
-
-.traffic-donut-center-label {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
     color: var(--mid-gray);
 }
 
-.traffic-legend {
+.treemap-wrap {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+}
+
+.treemap-canvas-wrap {
+    flex: 1;
+    min-width: 0;
+    height: 320px;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.treemap-legend {
+    width: 220px;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    flex: 1;
-}
-
-.traffic-legend-item {
-    display: grid;
-    grid-template-columns: 10px 1fr auto;
-    align-items: center;
     gap: 10px;
-    font-size: 13px;
+    padding-top: 4px;
 }
 
-.traffic-legend-dot {
-    width: 10px;
-    height: 10px;
+.treemap-legend-item {
+    display: grid;
+    grid-template-columns: 12px 1fr auto auto;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition);
+}
+
+.treemap-legend-item:hover {
+    background: var(--gold-subtle);
+}
+
+.treemap-legend-dot {
+    width: 12px;
+    height: 12px;
     border-radius: 3px;
     flex-shrink: 0;
 }
 
-.traffic-legend-label { font-weight: 500; color: var(--charcoal); }
-
-.traffic-legend-value {
-    font-family: var(--font-mono);
-    font-size: 12px;
+.treemap-legend-label {
     font-weight: 500;
+    color: var(--charcoal);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.treemap-legend-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--charcoal);
+    text-align: right;
+}
+
+.treemap-legend-views {
+    font-family: var(--font-mono);
+    font-size: 11px;
     color: var(--mid-gray);
     text-align: right;
+    min-width: 50px;
 }
 
 /* --- Responsive --- */
@@ -1264,8 +1266,10 @@ a:hover { color: var(--gold-light); }
     .tab-btn { padding: 10px 14px; font-size: 13px; }
     .deep-dive-hero { grid-template-columns: 1fr; }
     .deep-dive-metrics { grid-template-columns: repeat(2, 1fr); }
-    .traffic-donut-wrap { flex-direction: column; align-items: stretch; }
-    .traffic-donut-container { align-self: center; }
+    .treemap-wrap { flex-direction: column; }
+    .treemap-legend { width: 100%; flex-direction: row; flex-wrap: wrap; gap: 6px; }
+    .treemap-legend-item { grid-template-columns: 10px auto auto; }
+    .treemap-legend-views { display: none; }
     .video-feed-row { flex-wrap: wrap; gap: 10px; }
     .video-feed-thumb { width: 120px; height: 68px; }
     .video-feed-stats { width: 100%; justify-content: flex-end; padding-left: 136px; }
