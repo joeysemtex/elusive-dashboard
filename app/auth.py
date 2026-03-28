@@ -138,9 +138,7 @@ async def handle_google_callback(request: Request, db: AsyncSession) -> User:
 
 async def handle_instagram_login(request: Request):
     """Redirect to Instagram consent screen for Instagram access."""
-    redirect_uri = str(request.url_for("instagram_callback"))
-    if redirect_uri.startswith("http://") and settings.BASE_URL.startswith("https://"):
-        redirect_uri = redirect_uri.replace("http://", "https://", 1)
+    redirect_uri = settings.instagram_redirect_uri
     return await oauth.instagram.authorize_redirect(request, redirect_uri)
 
 
@@ -175,17 +173,13 @@ async def handle_instagram_callback(request: Request, db: AsyncSession) -> dict:
         log.error("Instagram OAuth: no code in callback")
         return {"success": False, "error": "no_code"}
 
-    redirect_uri = str(request.url_for("instagram_callback"))
-    if redirect_uri.startswith("http://") and settings.BASE_URL.startswith("https://"):
-        redirect_uri = redirect_uri.replace("http://", "https://", 1)
-
     async with httpx.AsyncClient() as client:
         # Exchange code → short-lived token (form-encoded POST)
         resp = await client.post("https://api.instagram.com/oauth/access_token", data={
             "client_id": settings.META_APP_ID,
             "client_secret": settings.META_APP_SECRET,
             "grant_type": "authorization_code",
-            "redirect_uri": redirect_uri,
+            "redirect_uri": settings.instagram_redirect_uri,
             "code": code,
         })
         if resp.status_code != 200:
