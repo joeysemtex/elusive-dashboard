@@ -16,11 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db, init_db
 from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic, YouTubeVideoAnalytics, YouTubeTrafficSource
-from app.auth import handle_google_login, handle_google_callback, handle_instagram_login, handle_instagram_callback
+from app.auth import handle_google_login, handle_google_callback
 from app.api import router as api_router
 from app.scheduler import start_scheduler, stop_scheduler
 from app.youtube import sync_creator_youtube, fetch_video_deep_dive, fetch_video_comments
-from app.instagram import sync_creator_instagram, clear_instagram_data, clear_instagram_tokens
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("elusive")
@@ -192,152 +191,6 @@ async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
             log.warning(f"Initial YouTube sync failed for {user.name}: {e}")
 
     return RedirectResponse("/", status_code=302)
-
-
-@app.get("/auth/instagram")
-async def instagram_login(request: Request):
-    if not request.session.get("user_id"):
-        return RedirectResponse("/login")
-    return await handle_instagram_login(request)
-
-
-@app.get("/auth/instagram/callback", name="instagram_callback")
-async def instagram_callback(request: Request, db: AsyncSession = Depends(get_db)):
-    if not request.session.get("user_id"):
-        return RedirectResponse("/login")
-    try:
-        result = await handle_instagram_callback(request, db)
-    except Exception as e:
-        log.error(f"Instagram OAuth error: {e}")
-        return RedirectResponse("/?error=ig_auth_failed", status_code=302)
-
-    if not result.get("success"):
-        error = result.get("error", "unknown")
-        return RedirectResponse(f"/?error={error}", status_code=302)
-
-    # Trigger initial Instagram sync (best-effort)
-    slug = result.get("slug", "")
-    if slug:
-        try:
-            cr = await db.execute(select(Creator).where(Creator.slug == slug))
-            creator = cr.scalar_one_or_none()
-            if creator:
-                await sync_creator_instagram(creator, db)
-        except Exception as e:
-            log.warning(f"Initial Instagram sync failed: {e}")
-
-    return RedirectResponse(f"/creator/{slug}" if slug else "/", status_code=302)
-
-
-@app.post("/auth/instagram/delete")
-async def instagram_data_deletion(request: Request, db: AsyncSession = Depends(get_db)):
-    """Meta Data Deletion callback — clears all Instagram data for a user."""
-    import hashlib
-    import hmac
-    import base64
-    import json as json_mod
-
-    try:
-        form = await request.form()
-        signed_request = form.get("signed_request", "")
-        if not signed_request:
-            body = await request.body()
-            data = json_mod.loads(body)
-            signed_request = data.get("signed_request", "")
-
-        if not signed_request or "." not in signed_request:
-            raise HTTPException(status_code=400, detail="Invalid signed_request")
-
-        encoded_sig, payload = signed_request.split(".", 1)
-        # Verify signature
-        secret = settings.META_APP_SECRET
-        expected_sig = hmac.new(
-            secret.encode(), payload.encode(), hashlib.sha256
-        ).digest()
-        # Decode the provided signature (URL-safe base64)
-        decoded_sig = base64.urlsafe_b64decode(encoded_sig + "==")
-
-        if not hmac.compare_digest(decoded_sig, expected_sig):
-            raise HTTPException(status_code=403, detail="Invalid signature")
-
-        # Decode payload
-        payload_data = json_mod.loads(base64.urlsafe_b64decode(payload + "=="))
-        ig_user_id = str(payload_data.get("user_id", ""))
-
-        # Find user by instagram_user_id
-        user_result = await db.execute(
-            select(User).where(User.instagram_user_id != None)
-        )
-        users = user_result.scalars().all()
-        target_user = None
-        for u in users:
-            if u.instagram_user_id == ig_user_id:
-                target_user = u
-                break
-
-        if target_user:
-            cr = await db.execute(select(Creator).where(Creator.user_id == target_user.id))
-            creator = cr.scalar_one_or_none()
-            await clear_instagram_data(target_user, creator, db)
-
-        import secrets
-        confirmation_code = secrets.token_hex(8)
-        return {
-            "url": f"{settings.BASE_URL}/privacy",
-            "confirmation_code": confirmation_code,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(f"Instagram data deletion error: {e}")
-        raise HTTPException(status_code=500, detail="Deletion processing error")
-
-
-@app.post("/auth/instagram/deauthorize")
-async def instagram_deauthorize(request: Request, db: AsyncSession = Depends(get_db)):
-    """Meta Deauthorization callback — clears Instagram tokens."""
-    import hashlib
-    import hmac
-    import base64
-    import json as json_mod
-
-    try:
-        form = await request.form()
-        signed_request = form.get("signed_request", "")
-        if not signed_request:
-            body = await request.body()
-            data = json_mod.loads(body)
-            signed_request = data.get("signed_request", "")
-
-        if not signed_request or "." not in signed_request:
-            raise HTTPException(status_code=400, detail="Invalid signed_request")
-
-        encoded_sig, payload = signed_request.split(".", 1)
-        secret = settings.META_APP_SECRET
-        expected_sig = hmac.new(
-            secret.encode(), payload.encode(), hashlib.sha256
-        ).digest()
-        decoded_sig = base64.urlsafe_b64decode(encoded_sig + "==")
-
-        if not hmac.compare_digest(decoded_sig, expected_sig):
-            raise HTTPException(status_code=403, detail="Invalid signature")
-
-        payload_data = json_mod.loads(base64.urlsafe_b64decode(payload + "=="))
-        ig_user_id = str(payload_data.get("user_id", ""))
-
-        user_result = await db.execute(
-            select(User).where(User.instagram_user_id == ig_user_id)
-        )
-        target_user = user_result.scalar_one_or_none()
-        if target_user:
-            await clear_instagram_tokens(target_user, db)
-
-        return {"success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        log.error(f"Instagram deauthorize error: {e}")
-        raise HTTPException(status_code=500)
 
 
 @app.get("/logout")
@@ -765,7 +618,7 @@ async def video_deep_dive(slug: str, video_id: str, request: Request, db: AsyncS
 
 @app.post("/admin/sync/{creator_id}")
 async def trigger_sync(creator_id: int, request: Request, db: AsyncSession = Depends(get_db)):
-    """Admin/viewer: manually trigger YouTube + Instagram sync for a creator."""
+    """Admin/viewer: manually trigger YouTube sync for a creator."""
     user = await get_current_user(request, db)
     if not user or user.role not in ("admin", "viewer"):
         raise HTTPException(status_code=403)
@@ -776,13 +629,7 @@ async def trigger_sync(creator_id: int, request: Request, db: AsyncSession = Dep
         raise HTTPException(status_code=404)
 
     await db.refresh(creator, ["user"])
-    yt_ok = await sync_creator_youtube(creator, db)
-
-    ig_ok = False
-    if creator.instagram_account_id:
-        ig_ok = await sync_creator_instagram(creator, db)
-
-    success = yt_ok or ig_ok
+    success = await sync_creator_youtube(creator, db)
 
     if request.headers.get("HX-Request"):
         return HTMLResponse(
