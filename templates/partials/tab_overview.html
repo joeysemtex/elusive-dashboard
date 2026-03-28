@@ -1,11 +1,12 @@
-<!-- Phase 3: Overview tab partial (HTMX fragment — no extends) -->
+<!-- YouTube Expansion: Overview tab with two-tier hero -->
 
-<div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr);">
+<!-- Primary Tier — The Big Three -->
+<div class="hero-primary">
     <div class="metric-card gold">
         <div class="metric-label">Subscribers</div>
         <div class="metric-value">{{ creator.yt_subscribers | format_number }}</div>
     </div>
-    <div class="metric-card">
+    <div class="metric-card gold">
         <div class="metric-label">30-Day Views</div>
         <div class="metric-value">{{ creator.yt_30d_views | format_number }}</div>
         {% if period_comparison.has_comparison %}
@@ -14,10 +15,30 @@
         </div>
         {% endif %}
     </div>
+    <div class="metric-card gold">
+        <div class="metric-label">Thumbnail CTR</div>
+        {% if creator.yt_impressions_ctr %}
+        <div class="metric-value">{{ (creator.yt_impressions_ctr * 100) | round(1) }}%</div>
+        {% if creator.yt_impressions_ctr > 0.10 %}
+        <div class="metric-benchmark" style="color: var(--success);">Top 5% of YouTube</div>
+        {% elif creator.yt_impressions_ctr < 0.02 %}
+        <div class="metric-benchmark" style="color: var(--warning);">Below platform average</div>
+        {% else %}
+        <div class="metric-benchmark">YouTube avg: 2–10%</div>
+        {% endif %}
+        {% else %}
+        <div class="metric-value">—</div>
+        <div class="metric-benchmark">YouTube avg: 2–10%</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Secondary Tier — Supporting Five -->
+<div class="hero-secondary">
     <div class="metric-card">
         <div class="metric-label">Engagement Rate</div>
         <div class="metric-value">{{ creator.yt_engagement_rate | format_percent }}</div>
-        <div class="benchmark-label">YouTube avg: 2-4%</div>
+        <div class="metric-benchmark">YouTube avg: 2-4%</div>
         <div class="metric-split">
             <span class="split-item"><span class="split-label">Long Form</span> {{ lf_metrics.avg_engagement | format_percent }}</span>
             <span class="split-item"><span class="split-label">Shorts</span> {{ shorts_metrics.avg_engagement | format_percent }}</span>
@@ -30,6 +51,10 @@
             <span class="split-item"><span class="split-label">Long Form</span> {{ lf_metrics.avg_duration | format_duration }}</span>
             <span class="split-item"><span class="split-label">Shorts</span> {{ shorts_metrics.avg_duration | format_duration }}</span>
         </div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Impressions (90d)</div>
+        <div class="metric-value">{{ creator.yt_impressions_30d | format_number if creator.yt_impressions_30d else '—' }}</div>
     </div>
     <div class="metric-card">
         <div class="metric-label">Watch Time (30d)</div>
@@ -71,35 +96,52 @@
     var views = {{ daily_stats | map(attribute='views') | list | tojson }};
     var watchTime = {{ daily_stats | map(attribute='watch_time_minutes') | list | tojson }};
 
+    var datasets = [
+        {
+            label: 'Views',
+            data: views,
+            backgroundColor: '#C9A84C20',
+            borderColor: '#C9A84C',
+            borderWidth: 1.5,
+            borderRadius: 4,
+            hoverBackgroundColor: '#C9A84C40',
+            yAxisID: 'y',
+            order: 2,
+        },
+        {
+            label: 'Watch Time (min)',
+            data: watchTime,
+            type: 'line',
+            borderColor: '#6B6B6B',
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+            yAxisID: 'y1',
+            order: 1,
+        }
+    ];
+
+    {% if daily_stats[0].impressions is not none %}
+    var impressions = {{ daily_stats | map(attribute='impressions') | list | tojson }};
+    if (impressions.some(function(v) { return v !== null && v > 0; })) {
+        datasets.push({
+            type: 'line',
+            label: 'Impressions',
+            data: impressions,
+            borderColor: '#D4B96A',
+            borderDash: [6, 3],
+            borderWidth: 1.5,
+            pointRadius: 0,
+            yAxisID: 'y1',
+            tension: 0.3,
+            order: 0,
+        });
+    }
+    {% endif %}
+
     new Chart(ctx, {
         type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Views',
-                    data: views,
-                    backgroundColor: '#C9A84C20',
-                    borderColor: '#C9A84C',
-                    borderWidth: 1.5,
-                    borderRadius: 4,
-                    hoverBackgroundColor: '#C9A84C40',
-                    yAxisID: 'y',
-                    order: 2,
-                },
-                {
-                    label: 'Watch Time (min)',
-                    data: watchTime,
-                    type: 'line',
-                    borderColor: '#6B6B6B',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    tension: 0.3,
-                    yAxisID: 'y1',
-                    order: 1,
-                }
-            ]
-        },
+        data: { labels: labels, datasets: datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -115,6 +157,7 @@
                     callbacks: {
                         label: function(ctx) {
                             if (ctx.dataset.label === 'Views') return ctx.raw.toLocaleString() + ' views';
+                            if (ctx.dataset.label === 'Impressions') return ctx.raw ? ctx.raw.toLocaleString() + ' impressions' : '';
                             return Math.round(ctx.raw / 60) + ' hours';
                         }
                     }

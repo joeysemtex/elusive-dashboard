@@ -1649,3 +1649,35 @@ a:hover { color: var(--gold-light); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--light-gray); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--mid-gray); }
+
+/* ─── YouTube Expansion: Two-Tier Hero Layout ─── */
+.hero-primary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 16px; }
+.hero-primary .metric-value { font-size: 36px; }
+.hero-secondary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 24px; }
+@media (max-width: 1280px) { .hero-secondary { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px) { .hero-primary, .hero-secondary { grid-template-columns: 1fr; } .hero-primary .metric-value { font-size: 28px; } }
+@media (min-width: 360px) and (max-width: 768px) { .hero-primary { grid-template-columns: repeat(2, 1fr); } }
+
+.metric-benchmark { font-size: 11px; color: var(--mid-gray); font-family: var(--font-primary); margin-top: 4px; }
+
+/* Video tags */
+.video-tag { display: inline-block; font-size: 10px; font-weight: 500; color: var(--mid-gray); background: var(--gold-subtle); padding: 2px 8px; border-radius: 10px; margin-right: 4px; margin-top: 4px; }
+.video-tags { margin-top: 2px; }
+@media (max-width: 768px) { .video-tags { display: none; } }
+
+/* Search keywords */
+.keyword-row { position: relative; }
+.keyword-bar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--gold-subtle); border-radius: 3px; z-index: 0; }
+.keyword-row td { position: relative; z-index: 1; }
+.keyword-term { font-family: var(--font-mono); font-size: 13px; }
+@media (max-width: 480px) { .keyword-table .col-watchtime { display: none; } }
+
+/* Age watch time dual value */
+.demo-bar-duration { font-family: var(--font-mono); font-size: 12px; color: var(--mid-gray); margin-left: 8px; white-space: nowrap; }
+.demo-row-highlight { background: var(--gold-subtle); border-radius: 4px; }
+
+/* Card performance inline */
+.insights-bar-compact { display: flex; gap: 24px; flex-wrap: wrap; padding: 16px 20px; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--light-gray); margin-bottom: 20px; }
+.insights-bar-compact .insight-item { display: flex; flex-direction: column; }
+.insights-bar-compact .insight-value { font-family: var(--font-mono); font-size: 18px; font-weight: 600; color: var(--charcoal); }
+.insights-bar-compact .insight-label { font-size: 11px; color: var(--mid-gray); margin-top: 2px; }
