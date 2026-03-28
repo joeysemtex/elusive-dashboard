@@ -56,6 +56,16 @@
         </div>
         <div class="video-feed-meta">
             <span class="video-feed-title">{{ video.title }}</span>
+            {% if video.tags %}
+            <div class="video-tags">
+                {% for tag in video.tags[:5] %}
+                <span class="video-tag">{{ tag[:20] }}{{ '…' if tag|length > 20 }}</span>
+                {% endfor %}
+                {% if video.tags|length > 5 %}
+                <span class="video-tag">+{{ video.tags|length - 5 }} more</span>
+                {% endif %}
+            </div>
+            {% endif %}
             <span class="video-feed-date">{{ video.published_at | timeago }}</span>
         </div>
         <div class="video-feed-stats">
@@ -70,6 +80,10 @@
             <div class="video-feed-stat">
                 <span class="video-feed-stat-value">{{ video.duration_seconds | format_duration }}</span>
                 <span class="video-feed-stat-label">Duration</span>
+            </div>
+            <div class="video-feed-stat">
+                <span class="video-feed-stat-value">{{ video.shares | format_number if video.shares else '–' }}</span>
+                <span class="video-feed-stat-label">Shares</span>
             </div>
         </div>
     </div>
@@ -98,6 +112,16 @@
         </div>
         <div class="video-feed-meta">
             <span class="video-feed-title">{{ video.title }}</span>
+            {% if video.tags %}
+            <div class="video-tags">
+                {% for tag in video.tags[:5] %}
+                <span class="video-tag">{{ tag[:20] }}{{ '…' if tag|length > 20 }}</span>
+                {% endfor %}
+                {% if video.tags|length > 5 %}
+                <span class="video-tag">+{{ video.tags|length - 5 }} more</span>
+                {% endif %}
+            </div>
+            {% endif %}
             <span class="video-feed-date">{{ video.published_at | timeago }}</span>
         </div>
         <div class="video-feed-stats">
@@ -112,6 +136,10 @@
             <div class="video-feed-stat">
                 <span class="video-feed-stat-value">{{ video.duration_seconds | format_duration }}</span>
                 <span class="video-feed-stat-label">Duration</span>
+            </div>
+            <div class="video-feed-stat">
+                <span class="video-feed-stat-value">{{ video.shares | format_number if video.shares else '–' }}</span>
+                <span class="video-feed-stat-label">Shares</span>
             </div>
         </div>
     </div>
