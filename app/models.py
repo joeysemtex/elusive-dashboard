@@ -58,6 +58,9 @@ class Creator(Base):
     yt_avg_view_duration = Column(Float, default=0.0)  # seconds
     yt_watch_time_hours_30d = Column(Float, default=0.0)
     yt_net_subscribers_30d = Column(Integer, default=0)
+    yt_impressions_30d = Column(Integer, default=0)
+    yt_impressions_ctr = Column(Float, default=0.0)  # weighted avg CTR (decimal)
+    yt_unique_viewers_30d = Column(Integer, default=0)
 
     ig_followers = Column(Integer, default=0)
     ig_reach_30d = Column(Integer, default=0)
@@ -92,6 +95,10 @@ class YouTubeStat(Base):
     likes = Column(Integer, default=0)
     comments = Column(Integer, default=0)
     shares = Column(Integer, default=0)
+    # Phase 2 expansion — impressions, CTR, unique viewers
+    impressions = Column(Integer, nullable=True)
+    impressions_ctr = Column(Float, nullable=True)       # decimal: 0.0663 = 6.63%
+    unique_viewers = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     creator = relationship("Creator", back_populates="youtube_stats")
@@ -111,6 +118,8 @@ class YouTubeVideo(Base):
     views = Column(Integer, default=0)
     likes = Column(Integer, default=0)
     comments = Column(Integer, default=0)
+    shares = Column(Integer, nullable=True)
+    tags = Column(JSON, nullable=True)  # list of tag strings from video metadata
     engagement_rate = Column(Float, default=0.0)
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -124,9 +133,10 @@ class YouTubeDemographic(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     creator_id = Column(Integer, ForeignKey("creators.id"), nullable=False, index=True)
-    dimension = Column(String(50), nullable=False)  # "ageGroup", "gender", "country", "deviceType", "subscribedStatus"
+    dimension = Column(String(50), nullable=False)  # "ageGroup", "gender", "country", "deviceType", "subscribedStatus", "playbackLocation", "operatingSystem", "ageGroup_watch_time"
     value = Column(String(100), nullable=False)       # e.g. "age25-34", "male", "US"
     percentage = Column(Float, default=0.0)
+    avg_view_duration = Column(Float, nullable=True)  # seconds — populated for country + ageGroup_watch_time rows
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -141,6 +151,10 @@ class YouTubeVideoAnalytics(Base):
     primary_traffic_source = Column(String(100), nullable=True)
     retention_data = Column(JSON, nullable=True)
     relative_retention = Column(Float, nullable=True)
+    # Phase 2 expansion — impressions, CTR, shares per video
+    impressions = Column(Integer, nullable=True)
+    impressions_ctr = Column(Float, nullable=True)
+    shares = Column(Integer, nullable=True)
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
 
     video = relationship("YouTubeVideo", back_populates="analytics")
@@ -160,3 +174,50 @@ class YouTubeTrafficSource(Base):
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
 
     creator = relationship("Creator", back_populates="youtube_traffic_sources")
+
+
+class YouTubeSearchTerm(Base):
+    """Top YouTube search terms driving views to the channel."""
+    __tablename__ = "youtube_search_terms"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    creator_id = Column(Integer, ForeignKey("creators.id"), nullable=False, index=True)
+    term = Column(String(500), nullable=False)
+    views = Column(Integer, default=0)
+    watch_time_minutes = Column(Float, default=0.0)
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+
+    creator = relationship("Creator")
+
+
+class YouTubeCardStats(Base):
+    """Channel-level card and end screen performance metrics."""
+    __tablename__ = "youtube_card_stats"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    creator_id = Column(Integer, ForeignKey("creators.id"), nullable=False, unique=True, index=True)
+    window_start = Column(DateTime, nullable=True)
+    window_end = Column(DateTime, nullable=True)
+    card_impressions = Column(Integer, nullable=True)
+    card_clicks = Column(Integer, nullable=True)
+    card_click_rate = Column(Float, nullable=True)
+    card_teaser_impressions = Column(Integer, nullable=True)
+    card_teaser_clicks = Column(Integer, nullable=True)
+    card_teaser_click_rate = Column(Float, nullable=True)
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+
+    creator = relationship("Creator")
+
+
+class YouTubeReportingJob(Base):
+    """Tracks YouTube Reporting API job registrations per creator."""
+    __tablename__ = "youtube_reporting_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    creator_id = Column(Integer, ForeignKey("creators.id"), nullable=False, index=True)
+    job_id = Column(String(100), nullable=False)
+    report_type_id = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    last_downloaded_at = Column(DateTime, nullable=True)
+
+    creator = relationship("Creator")

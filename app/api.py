@@ -7,7 +7,11 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic, YouTubeVideoAnalytics, YouTubeTrafficSource
+from app.models import (
+    Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic,
+    YouTubeVideoAnalytics, YouTubeTrafficSource, YouTubeSearchTerm,
+    YouTubeCardStats, YouTubeReportingJob,
+)
 
 router = APIRouter(prefix="/api", tags=["pipeline"])
 
@@ -44,6 +48,9 @@ async def list_creators(
                     "views_30d": c.yt_30d_views,
                     "engagement_rate": round(c.yt_engagement_rate, 2),
                     "avg_view_duration_seconds": round(c.yt_avg_view_duration, 1),
+                    "impressions_30d": c.yt_impressions_30d,
+                    "impressions_ctr": round(c.yt_impressions_ctr, 4) if c.yt_impressions_ctr else None,
+                    "unique_viewers_30d": c.yt_unique_viewers_30d,
                 },
                 "instagram": {
                     "followers": c.ig_followers,
@@ -83,7 +90,7 @@ async def get_creator_youtube(
     )
     videos = vids_result.scalars().all()
 
-    # Daily stats (30 days) — includes subscribers_gained/lost
+    # Daily stats (30 days) — includes impressions, CTR, uniques
     stats_result = await db.execute(
         select(YouTubeStat)
         .where(YouTubeStat.creator_id == creator_id)
@@ -92,7 +99,7 @@ async def get_creator_youtube(
     )
     daily_stats = stats_result.scalars().all()
 
-    # Demographics — includes subscribedStatus for returning viewer proxy
+    # Demographics — all dimensions
     demo_result = await db.execute(
         select(YouTubeDemographic)
         .where(YouTubeDemographic.creator_id == creator_id)
@@ -110,6 +117,21 @@ async def get_creator_youtube(
     )
     traffic_sources = traffic_result.scalars().all()
 
+    # Search terms
+    search_result = await db.execute(
+        select(YouTubeSearchTerm)
+        .where(YouTubeSearchTerm.creator_id == creator_id)
+        .order_by(YouTubeSearchTerm.views.desc())
+    )
+    search_terms = search_result.scalars().all()
+
+    # Card stats
+    card_result = await db.execute(
+        select(YouTubeCardStats)
+        .where(YouTubeCardStats.creator_id == creator_id)
+    )
+    card_stats = card_result.scalar_one_or_none()
+
     # Derived: net subscribers over window
     subs_gained = sum(s.subscribers_gained or 0 for s in daily_stats)
     subs_lost   = sum(s.subscribers_lost  or 0 for s in daily_stats)
@@ -122,6 +144,12 @@ async def get_creator_youtube(
          and "not" not in (d.value or "").lower()),
         None
     )
+
+    # Derived: impressions aggregates
+    total_impressions = sum(s.impressions or 0 for s in daily_stats)
+    weighted_ctr_sum = sum((s.impressions or 0) * (s.impressions_ctr or 0) for s in daily_stats)
+    weighted_ctr = round(weighted_ctr_sum / max(total_impressions, 1), 4) if total_impressions > 0 else None
+    total_unique_viewers = sum(s.unique_viewers or 0 for s in daily_stats)
 
     # Total traffic views (for % calculation)
     total_traffic_views = sum(t.views or 0 for t in traffic_sources) or 1
@@ -143,6 +171,10 @@ async def get_creator_youtube(
             # Derived fields
             "yt_net_subscribers_30d": net_subs_30d,
             "returning_viewer_pct": round(subscribed_pct, 1) if subscribed_pct is not None else None,
+            # Impressions + CTR + uniques
+            "impressions_30d": total_impressions if total_impressions > 0 else None,
+            "impressions_ctr": weighted_ctr,
+            "unique_viewers_30d": total_unique_viewers if total_unique_viewers > 0 else None,
         },
         "videos": [
             {
@@ -154,11 +186,15 @@ async def get_creator_youtube(
                 "views": v.views,
                 "likes": v.likes,
                 "comments": v.comments,
+                "shares": v.analytics.shares if v.analytics else (v.shares if v.shares else None),
+                "tags": v.tags,
                 "engagement_rate": round(v.engagement_rate, 2),
                 "format": "short" if (v.duration_seconds or 0) < 60 else "long_form",
                 # Per-video deep analytics (None if not yet collected)
                 "avg_view_duration_seconds": round(v.analytics.avg_view_duration, 1) if v.analytics else None,
                 "avg_pct_viewed": round(v.analytics.avg_pct_viewed, 1) if v.analytics else None,
+                "impressions": v.analytics.impressions if v.analytics else None,
+                "impressions_ctr": v.analytics.impressions_ctr if v.analytics else None,
             }
             for v in videos
         ],
@@ -169,17 +205,56 @@ async def get_creator_youtube(
                 "watch_time_minutes": round(s.watch_time_minutes, 1),
                 "likes": s.likes,
                 "comments": s.comments,
+                "shares": s.shares,
                 "subscribers_gained": s.subscribers_gained or 0,
                 "subscribers_lost": s.subscribers_lost or 0,
+                "impressions": s.impressions,
+                "impressions_ctr": s.impressions_ctr,
+                "unique_viewers": s.unique_viewers,
             }
             for s in reversed(daily_stats)
         ],
         "demographics": {
-            dim: [
+            "ageGroup": [
                 {"value": d.value, "percentage": round(d.percentage, 1)}
-                for d in demographics if d.dimension == dim
-            ]
-            for dim in ["ageGroup", "gender", "country", "deviceType", "subscribedStatus"]
+                for d in demographics if d.dimension == "ageGroup"
+            ],
+            "gender": [
+                {"value": d.value, "percentage": round(d.percentage, 1)}
+                for d in demographics if d.dimension == "gender"
+            ],
+            "country": [
+                {
+                    "value": d.value,
+                    "percentage": round(d.percentage, 1),
+                    "avg_view_duration_seconds": round(d.avg_view_duration, 1) if d.avg_view_duration else None,
+                }
+                for d in demographics if d.dimension == "country"
+            ],
+            "ageGroup_watch_time": [
+                {
+                    "value": d.value,
+                    "percentage": round(d.percentage, 1),
+                    "avg_view_duration_seconds": round(d.avg_view_duration, 1) if d.avg_view_duration else None,
+                }
+                for d in demographics if d.dimension == "ageGroup_watch_time"
+            ],
+            "deviceType": [
+                {"value": d.value, "percentage": round(d.percentage, 1)}
+                for d in demographics if d.dimension == "deviceType"
+            ],
+            "subscribedStatus": [
+                {"value": d.value, "percentage": round(d.percentage, 1)}
+                for d in demographics if d.dimension == "subscribedStatus"
+            ],
+            "playbackLocation": [
+                {"value": d.value, "percentage": round(d.percentage, 1)}
+                for d in demographics if d.dimension == "playbackLocation"
+            ],
+            "operatingSystem": [
+                {"value": d.value, "percentage": round(d.percentage, 1)}
+                for d in demographics if d.dimension == "operatingSystem"
+            ],
         },
         "traffic_sources": [
             {
@@ -190,6 +265,22 @@ async def get_creator_youtube(
             }
             for t in traffic_sources
         ] if traffic_sources else [],
+        "search_terms": [
+            {
+                "term": t.term,
+                "views": t.views,
+                "watch_time_minutes": round(t.watch_time_minutes, 1),
+            }
+            for t in search_terms
+        ],
+        "card_stats": {
+            "impressions": card_stats.card_impressions,
+            "clicks": card_stats.card_clicks,
+            "click_rate": card_stats.card_click_rate,
+            "teaser_impressions": card_stats.card_teaser_impressions,
+            "teaser_clicks": card_stats.card_teaser_clicks,
+            "teaser_click_rate": card_stats.card_teaser_click_rate,
+        } if card_stats else None,
         "long_form": {
             "count": len([v for v in videos if (v.duration_seconds or 0) >= 60]),
             "videos": [
@@ -199,6 +290,9 @@ async def get_creator_youtube(
                     "engagement_rate": round(v.engagement_rate, 2),
                     "duration_seconds": v.duration_seconds,
                     "avg_pct_viewed": round(v.analytics.avg_pct_viewed, 1) if v.analytics else None,
+                    "impressions": v.analytics.impressions if v.analytics else None,
+                    "impressions_ctr": v.analytics.impressions_ctr if v.analytics else None,
+                    "shares": v.analytics.shares if v.analytics else (v.shares if v.shares else None),
                 }
                 for v in videos if (v.duration_seconds or 0) >= 60
             ],
@@ -244,13 +338,42 @@ async def export_creator_pitch(
     # Recent videos for top performers
     vids_result = await db.execute(
         select(YouTubeVideo)
+        .options(selectinload(YouTubeVideo.analytics))
         .where(YouTubeVideo.creator_id == creator_id)
         .order_by(YouTubeVideo.views.desc())
         .limit(5)
     )
     top_videos = vids_result.scalars().all()
 
+    # Search terms
+    search_result = await db.execute(
+        select(YouTubeSearchTerm)
+        .where(YouTubeSearchTerm.creator_id == creator_id)
+        .order_by(YouTubeSearchTerm.views.desc())
+        .limit(10)
+    )
+    search_terms = search_result.scalars().all()
+
+    # Card stats
+    card_result = await db.execute(
+        select(YouTubeCardStats)
+        .where(YouTubeCardStats.creator_id == creator_id)
+    )
+    card_stats = card_result.scalar_one_or_none()
+
+    # Demographics
+    demo_result = await db.execute(
+        select(YouTubeDemographic)
+        .where(YouTubeDemographic.creator_id == creator_id)
+    )
+    demographics = demo_result.scalars().all()
+
     avg_views = sum(s.views for s in daily_stats) / len(daily_stats) if daily_stats else 0
+
+    # Impressions aggregates
+    total_impressions = sum(s.impressions or 0 for s in daily_stats)
+    weighted_ctr_sum = sum((s.impressions or 0) * (s.impressions_ctr or 0) for s in daily_stats)
+    weighted_ctr = round(weighted_ctr_sum / max(total_impressions, 1), 4) if total_impressions > 0 else None
 
     return {
         "creator_name": creator.display_name,
@@ -263,6 +386,10 @@ async def export_creator_pitch(
         "engagement_rate": round(creator.yt_engagement_rate, 2),
         "avg_view_duration_seconds": round(creator.yt_avg_view_duration, 1),
         "trend": creator.trend_direction,
+        # New fields
+        "impressions_30d": total_impressions if total_impressions > 0 else None,
+        "impressions_ctr": weighted_ctr,
+        "unique_viewers_30d": creator.yt_unique_viewers_30d if creator.yt_unique_viewers_30d else None,
         "top_videos": [
             {
                 "title": v.title,
@@ -271,9 +398,49 @@ async def export_creator_pitch(
                 "engagement_rate": round(v.engagement_rate, 2),
                 "format": "short" if (v.duration_seconds or 0) < 60 else "long_form",
                 "url": f"https://youtube.com/watch?v={v.video_id}",
+                "shares": v.analytics.shares if v.analytics else (v.shares if v.shares else None),
+                "impressions": v.analytics.impressions if v.analytics else None,
+                "impressions_ctr": v.analytics.impressions_ctr if v.analytics else None,
+                "avg_pct_viewed": round(v.analytics.avg_pct_viewed, 1) if v.analytics else None,
             }
             for v in top_videos
         ],
+        "search_terms": [
+            {"term": t.term, "views": t.views, "watch_time_minutes": round(t.watch_time_minutes, 1)}
+            for t in search_terms
+        ],
+        "card_stats": {
+            "impressions": card_stats.card_impressions,
+            "clicks": card_stats.card_clicks,
+            "click_rate": card_stats.card_click_rate,
+            "teaser_click_rate": card_stats.card_teaser_click_rate,
+        } if card_stats else None,
+        "demographics": {
+            "country": [
+                {
+                    "value": d.value,
+                    "percentage": round(d.percentage, 1),
+                    "avg_view_duration_seconds": round(d.avg_view_duration, 1) if d.avg_view_duration else None,
+                }
+                for d in demographics if d.dimension == "country"
+            ],
+            "ageGroup_watch_time": [
+                {
+                    "value": d.value,
+                    "percentage": round(d.percentage, 1),
+                    "avg_view_duration_seconds": round(d.avg_view_duration, 1) if d.avg_view_duration else None,
+                }
+                for d in demographics if d.dimension == "ageGroup_watch_time"
+            ],
+            "playbackLocation": [
+                {"value": d.value, "percentage": round(d.percentage, 1)}
+                for d in demographics if d.dimension == "playbackLocation"
+            ],
+            "operatingSystem": [
+                {"value": d.value, "percentage": round(d.percentage, 1)}
+                for d in demographics if d.dimension == "operatingSystem"
+            ],
+        },
         "instagram": {
             "username": creator.instagram_username,
             "followers": creator.ig_followers,
@@ -308,6 +475,9 @@ async def delete_creator(
     await db.execute(delete(YouTubeVideoAnalytics).where(YouTubeVideoAnalytics.video_id.in_(video_ids_subq)))
     await db.execute(delete(YouTubeTrafficSource).where(YouTubeTrafficSource.creator_id == creator_id))
     await db.execute(delete(YouTubeDemographic).where(YouTubeDemographic.creator_id == creator_id))
+    await db.execute(delete(YouTubeSearchTerm).where(YouTubeSearchTerm.creator_id == creator_id))
+    await db.execute(delete(YouTubeCardStats).where(YouTubeCardStats.creator_id == creator_id))
+    await db.execute(delete(YouTubeReportingJob).where(YouTubeReportingJob.creator_id == creator_id))
     await db.execute(delete(YouTubeVideo).where(YouTubeVideo.creator_id == creator_id))
     await db.execute(delete(YouTubeStat).where(YouTubeStat.creator_id == creator_id))
 

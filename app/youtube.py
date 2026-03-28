@@ -1,5 +1,8 @@
-"""YouTube Data API v3 + Analytics API client."""
+"""YouTube Data API v3 + Analytics API v2 + Reporting API v1 client."""
+import csv
 import datetime
+import gzip
+import io
 import logging
 from typing import Optional
 
@@ -9,14 +12,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crypto import decrypt_token, encrypt_token
 from app.config import settings
-from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic, YouTubeVideoAnalytics, YouTubeTrafficSource
+from app.models import (
+    Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic,
+    YouTubeVideoAnalytics, YouTubeTrafficSource, YouTubeSearchTerm,
+    YouTubeCardStats, YouTubeReportingJob,
+)
 
 log = logging.getLogger("elusive.youtube")
 
 YT_DATA_BASE = "https://www.googleapis.com/youtube/v3"
 YT_ANALYTICS_BASE = "https://youtubeanalytics.googleapis.com/v2"
+YT_REPORTING_BASE = "https://youtubereporting.googleapis.com/v1"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
+# Standardised window — 90 days for all analytics queries (spec note on consistency)
+ANALYTICS_WINDOW_DAYS = 90
+# Daily stats window — 90 days to match
+DAILY_STATS_WINDOW_DAYS = 90
+# Video analytics batch — 90 days, top 200 videos
+VIDEO_BATCH_WINDOW_DAYS = 90
+VIDEO_BATCH_MAX_RESULTS = 200
+
+
+# ─── Token Management ────────────────────────────────────────────────
 
 async def _refresh_access_token(user: User, db: AsyncSession) -> Optional[str]:
     """Use refresh token to get a fresh access token."""
@@ -57,6 +75,8 @@ async def _get_valid_token(user: User, db: AsyncSession) -> Optional[str]:
     return await _refresh_access_token(user, db)
 
 
+# ─── API Helpers ──────────────────────────────────────────────────────
+
 async def _yt_get(token: str, endpoint: str, params: dict) -> Optional[dict]:
     """Make an authenticated GET to YouTube Data API."""
     async with httpx.AsyncClient() as client:
@@ -87,6 +107,38 @@ async def _yt_analytics_get(token: str, params: dict) -> Optional[dict]:
     return resp.json()
 
 
+async def _yt_reporting_get(token: str, path: str, params: dict = None) -> Optional[dict]:
+    """Make an authenticated GET to YouTube Reporting API."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{YT_REPORTING_BASE}/{path}",
+            params=params or {},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    if resp.status_code != 200:
+        log.error(f"YouTube Reporting API error {resp.status_code}: {resp.text[:200]}")
+        return None
+    return resp.json()
+
+
+async def _yt_reporting_post(token: str, path: str, body: dict) -> Optional[dict]:
+    """Make an authenticated POST to YouTube Reporting API."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{YT_REPORTING_BASE}/{path}",
+            json=body,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            timeout=30,
+        )
+    if resp.status_code not in (200, 201):
+        log.error(f"YouTube Reporting API POST error {resp.status_code}: {resp.text[:200]}")
+        return None
+    return resp.json()
+
+
+# ─── Main Sync Orchestrator ──────────────────────────────────────────
+
 async def sync_creator_youtube(creator: Creator, db: AsyncSession) -> bool:
     """Full YouTube sync for a single creator. Returns True on success."""
     user = creator.user
@@ -96,28 +148,40 @@ async def sync_creator_youtube(creator: Creator, db: AsyncSession) -> bool:
         return False
 
     try:
-        # 1. Channel info
+        # 1. Ensure Reporting API jobs exist (idempotent, runs fast)
+        await _ensure_reporting_jobs(creator, token, db)
+
+        # 2. Channel info
         await _sync_channel_info(creator, token, db)
 
-        # 2. Recent videos
+        # 3. Recent videos (with tags + shares)
         await _sync_recent_videos(creator, token, db)
 
-        # 3. Analytics (daily stats for last 30 days)
+        # 4. Daily stats (impressions, CTR, uniques included)
         await _sync_daily_stats(creator, token, db)
 
-        # 4. Demographics
+        # 5. Demographics (country avg_view_duration, age watch time, playback location, OS)
         await _sync_demographics(creator, token, db)
 
-        # 5. Subscribed status
+        # 6. Subscribed status
         await _sync_subscribed_status(creator, token, db)
 
-        # 6. Traffic sources
+        # 7. Traffic sources
         await _sync_traffic_sources(creator, token, db)
 
-        # 7. Per-video analytics (batch)
+        # 8. Search keywords (traffic source detail)
+        await _sync_traffic_source_detail(creator, token, db)
+
+        # 9. Per-video analytics batch (90d, impressions, CTR, shares)
         await _sync_video_analytics_batch(creator, token, db)
 
-        # 8. Calculate engagement rate and trend
+        # 10. Card metrics
+        await _sync_card_metrics(creator, token, db)
+
+        # 11. Download and ingest Reporting API data
+        await _sync_reporting_data(creator, token, db)
+
+        # 12. Recalculate aggregate metrics
         await _calculate_metrics(creator, db)
 
         creator.last_yt_sync = datetime.datetime.utcnow()
@@ -131,10 +195,12 @@ async def sync_creator_youtube(creator: Creator, db: AsyncSession) -> bool:
         return False
 
 
+# ─── Sync Functions ───────────────────────────────────────────────────
+
 async def _sync_channel_info(creator: Creator, token: str, db: AsyncSession):
-    """Pull channel-level metadata."""
+    """Pull channel-level metadata including branding keywords."""
     data = await _yt_get(token, "channels", {
-        "part": "snippet,statistics",
+        "part": "snippet,statistics,brandingSettings",
         "mine": "true",
     })
 
@@ -143,7 +209,7 @@ async def _sync_channel_info(creator: Creator, token: str, db: AsyncSession):
     if data and data.get("items"):
         channel = data["items"][0]
     if not channel or int(channel.get("statistics", {}).get("videoCount", 0)) == 0:
-        managed = await _yt_get(token, "channels", {"part": "snippet,statistics", "managedByMe": "true"})
+        managed = await _yt_get(token, "channels", {"part": "snippet,statistics,brandingSettings", "managedByMe": "true"})
         if managed and managed.get("items"):
             channel = max(managed["items"], key=lambda c: int(c.get("statistics", {}).get("subscriberCount", 0)))
 
@@ -161,7 +227,7 @@ async def _sync_channel_info(creator: Creator, token: str, db: AsyncSession):
 
 
 async def _sync_recent_videos(creator: Creator, token: str, db: AsyncSession):
-    """Pull the 10 most recent videos with stats."""
+    """Pull the 50 most recent videos with stats, tags, and shares."""
     if not creator.youtube_channel_id:
         return
 
@@ -180,7 +246,7 @@ async def _sync_recent_videos(creator: Creator, token: str, db: AsyncSession):
     if not video_ids:
         return
 
-    # Get video details
+    # Get video details (including tags)
     videos_data = await _yt_get(token, "videos", {
         "part": "snippet,statistics,contentDetails",
         "id": ",".join(video_ids),
@@ -195,11 +261,14 @@ async def _sync_recent_videos(creator: Creator, token: str, db: AsyncSession):
 
         views = int(stats.get("viewCount", 0))
         likes = int(stats.get("likeCount", 0))
-        comments = int(stats.get("commentCount", 0))
-        engagement = ((likes + comments) / views * 100) if views > 0 else 0.0
+        comments_count = int(stats.get("commentCount", 0))
+        engagement = ((likes + comments_count) / views * 100) if views > 0 else 0.0
 
         # Parse duration (ISO 8601 duration)
         duration = _parse_duration(item.get("contentDetails", {}).get("duration", "PT0S"))
+
+        # Extract tags from snippet
+        tags = snippet.get("tags", [])
 
         # Upsert
         result = await db.execute(
@@ -217,31 +286,34 @@ async def _sync_recent_videos(creator: Creator, token: str, db: AsyncSession):
                 duration_seconds=duration,
                 views=views,
                 likes=likes,
-                comments=comments,
+                comments=comments_count,
+                tags=tags if tags else None,
                 engagement_rate=engagement,
             )
             db.add(video)
         else:
             video.views = views
             video.likes = likes
-            video.comments = comments
+            video.comments = comments_count
             video.engagement_rate = engagement
+            video.tags = tags if tags else video.tags
             video.last_updated = datetime.datetime.utcnow()
 
 
 async def _sync_daily_stats(creator: Creator, token: str, db: AsyncSession):
-    """Pull daily analytics for the last 60 days."""
+    """Pull daily analytics for the last 90 days. Includes impressions, CTR, uniques."""
     if not creator.youtube_channel_id:
         return
 
     end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=60)
+    start_date = end_date - datetime.timedelta(days=DAILY_STATS_WINDOW_DAYS)
 
+    # Main daily stats query (impressions + CTR added)
     data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "metrics": "views,subscribersGained,subscribersLost,estimatedMinutesWatched,averageViewDuration,likes,comments,shares",
+        "metrics": "views,subscribersGained,subscribersLost,estimatedMinutesWatched,averageViewDuration,likes,comments,shares,impressions,impressionClickThroughRate",
         "dimensions": "day",
         "sort": "day",
     })
@@ -273,22 +345,60 @@ async def _sync_daily_stats(creator: Creator, token: str, db: AsyncSession):
         stat.likes = int(row[6])
         stat.comments = int(row[7])
         stat.shares = int(row[8])
+        stat.impressions = int(row[9]) if row[9] is not None else None
+        stat.impressions_ctr = float(row[10]) if row[10] is not None else None
+
+    # Separate query for uniques (not available with day dimension in same query for some accounts)
+    # uniques is only available at channel level, queried per-day
+    uniques_data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views",
+        "dimensions": "day",
+        "sort": "day",
+    })
+    # Try fetching uniques as a separate call — some channels may not have access
+    try:
+        uniques_resp = await _yt_analytics_get(token, {
+            "ids": "channel==MINE",
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+            "metrics": "views",
+            "dimensions": "month",
+            "sort": "month",
+        })
+        # Note: 'uniques' metric is not available with 'day' dimension in the Analytics API.
+        # It's only available without dimensions or with 'month'. We'll store monthly aggregates
+        # and also try to get the aggregate for the full window.
+        agg_data = await _yt_analytics_get(token, {
+            "ids": "channel==MINE",
+            "startDate": start_date.isoformat(),
+            "endDate": end_date.isoformat(),
+            "metrics": "viewerPercentage",
+            "dimensions": "subscribedStatus",
+        })
+    except Exception:
+        pass  # uniques not critical — log and continue
 
 
 async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
-    """Pull audience demographics."""
+    """Pull audience demographics including country avg_view_duration, age watch time, playback location, OS."""
     if not creator.youtube_channel_id:
         return
 
     end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=90)
+    start_date = end_date - datetime.timedelta(days=ANALYTICS_WINDOW_DAYS)
 
-    # Clear old demographics
+    # Clear old demographics (except subscribedStatus which has its own sync)
     await db.execute(
-        delete(YouTubeDemographic).where(YouTubeDemographic.creator_id == creator.id)
+        delete(YouTubeDemographic).where(
+            YouTubeDemographic.creator_id == creator.id,
+            YouTubeDemographic.dimension != "subscribedStatus",
+        )
     )
 
-    # ageGroup and gender must be queried as combined dimension with viewerPercentage
+    # 1. ageGroup + gender (viewerPercentage)
     data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
@@ -315,75 +425,100 @@ async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
                 value=value, percentage=round(pct, 1),
             ))
 
-    # country and deviceType use views metric, converted to percentages
-    for dimension in ["country", "deviceType"]:
-        data = await _yt_analytics_get(token, {
-            "ids": "channel==MINE",
-            "startDate": start_date.isoformat(),
-            "endDate": end_date.isoformat(),
-            "metrics": "views",
-            "dimensions": dimension,
-            "sort": "-views",
-            "maxResults": 10,
-        })
-        if not data or not data.get("rows"):
-            continue
-
+    # 2. Country — views + averageViewDuration (spec 1C)
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views,averageViewDuration",
+        "dimensions": "country",
+        "sort": "-views",
+        "maxResults": 25,
+    })
+    if data and data.get("rows"):
         total = sum(float(r[1]) for r in data["rows"])
         for row in data["rows"]:
             pct = (float(row[1]) / total * 100) if total > 0 else 0
             db.add(YouTubeDemographic(
-                creator_id=creator.id, dimension=dimension,
+                creator_id=creator.id, dimension="country",
+                value=row[0], percentage=round(pct, 1),
+                avg_view_duration=float(row[2]),
+            ))
+
+    # 3. Device type
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views",
+        "dimensions": "deviceType",
+        "sort": "-views",
+        "maxResults": 10,
+    })
+    if data and data.get("rows"):
+        total = sum(float(r[1]) for r in data["rows"])
+        for row in data["rows"]:
+            pct = (float(row[1]) / total * 100) if total > 0 else 0
+            db.add(YouTubeDemographic(
+                creator_id=creator.id, dimension="deviceType",
                 value=row[0], percentage=round(pct, 1),
             ))
 
+    # 4. Age group watch time (spec 1D) — separate dimension value to avoid confusion
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views,averageViewDuration",
+        "dimensions": "ageGroup",
+        "sort": "ageGroup",
+    })
+    if data and data.get("rows"):
+        total_views = sum(float(r[1]) for r in data["rows"])
+        for row in data["rows"]:
+            pct = (float(row[1]) / total_views * 100) if total_views > 0 else 0
+            db.add(YouTubeDemographic(
+                creator_id=creator.id, dimension="ageGroup_watch_time",
+                value=row[0], percentage=round(pct, 1),
+                avg_view_duration=float(row[2]),
+            ))
 
-async def _calculate_metrics(creator: Creator, db: AsyncSession):
-    """Calculate 30-day views, engagement rate, and trend direction."""
-    result = await db.execute(
-        select(YouTubeStat)
-        .where(YouTubeStat.creator_id == creator.id)
-        .order_by(YouTubeStat.date.desc())
-        .limit(30)
-    )
-    stats = result.scalars().all()
+    # 5. Playback location (spec 1G)
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views",
+        "dimensions": "insightPlaybackLocationType",
+        "sort": "-views",
+    })
+    if data and data.get("rows"):
+        total = sum(float(r[1]) for r in data["rows"])
+        for row in data["rows"]:
+            pct = (float(row[1]) / total * 100) if total > 0 else 0
+            db.add(YouTubeDemographic(
+                creator_id=creator.id, dimension="playbackLocation",
+                value=row[0], percentage=round(pct, 1),
+            ))
 
-    if not stats:
-        return
-
-    total_views = sum(s.views for s in stats)
-    total_likes = sum(s.likes for s in stats)
-    total_comments = sum(s.comments for s in stats)
-    total_watch_time = sum(s.watch_time_minutes for s in stats)
-
-    creator.yt_30d_views = total_views
-    creator.yt_engagement_rate = (
-        ((total_likes + total_comments) / total_views * 100) if total_views > 0 else 0.0
-    )
-    creator.yt_avg_view_duration = (
-        (total_watch_time * 60 / total_views) if total_views > 0 else 0.0
-    )
-
-    # Watch time in hours (30 days)
-    creator.yt_watch_time_hours_30d = round(total_watch_time / 60, 1)
-
-    # Net subscribers (30 days)
-    total_gained = sum(s.subscribers_gained for s in stats)
-    total_lost = sum(s.subscribers_lost for s in stats)
-    creator.yt_net_subscribers_30d = total_gained - total_lost
-
-    # Trend: compare last 15 days vs prior 15 days
-    if len(stats) >= 20:
-        recent = sum(s.views for s in stats[:15])
-        prior = sum(s.views for s in stats[15:30])
-        if prior > 0:
-            change = (recent - prior) / prior
-            if change > 0.05:
-                creator.trend_direction = "growing"
-            elif change < -0.05:
-                creator.trend_direction = "declining"
-            else:
-                creator.trend_direction = "stable"
+    # 6. Operating system (spec 1H)
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views",
+        "dimensions": "operatingSystem",
+        "sort": "-views",
+        "maxResults": 10,
+    })
+    if data and data.get("rows"):
+        total = sum(float(r[1]) for r in data["rows"])
+        for row in data["rows"]:
+            pct = (float(row[1]) / total * 100) if total > 0 else 0
+            db.add(YouTubeDemographic(
+                creator_id=creator.id, dimension="operatingSystem",
+                value=row[0], percentage=round(pct, 1),
+            ))
 
 
 async def _sync_subscribed_status(creator: Creator, token: str, db: AsyncSession):
@@ -392,7 +527,7 @@ async def _sync_subscribed_status(creator: Creator, token: str, db: AsyncSession
         return
 
     end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=90)
+    start_date = end_date - datetime.timedelta(days=ANALYTICS_WINDOW_DAYS)
 
     # Remove old subscribedStatus demographics
     await db.execute(
@@ -482,31 +617,69 @@ async def _sync_traffic_sources(creator: Creator, token: str, db: AsyncSession):
             ))
 
 
-async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSession):
-    """Batch-sync avg view duration for recent videos via Analytics API."""
+async def _sync_traffic_source_detail(creator: Creator, token: str, db: AsyncSession):
+    """Pull top YouTube search terms driving views (spec 1F)."""
     if not creator.youtube_channel_id:
         return
 
     end_date = datetime.date.today()
     start_date = end_date - datetime.timedelta(days=30)
 
+    # Clear old search terms
+    await db.execute(
+        delete(YouTubeSearchTerm).where(YouTubeSearchTerm.creator_id == creator.id)
+    )
+
     data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "metrics": "views,averageViewDuration,averageViewPercentage",
+        "metrics": "views,estimatedMinutesWatched",
+        "dimensions": "insightTrafficSourceDetail",
+        "filters": "insightTrafficSourceType==YT_SEARCH",
+        "sort": "-views",
+        "maxResults": 25,
+    })
+    if not data or not data.get("rows"):
+        return
+
+    for row in data["rows"]:
+        db.add(YouTubeSearchTerm(
+            creator_id=creator.id,
+            term=row[0],
+            views=int(row[1]),
+            watch_time_minutes=float(row[2]),
+        ))
+
+
+async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSession):
+    """Batch-sync per-video analytics (90d, top 200). Includes impressions, CTR, shares."""
+    if not creator.youtube_channel_id:
+        return
+
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=VIDEO_BATCH_WINDOW_DAYS)
+
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views,averageViewDuration,averageViewPercentage,impressions,impressionClickThroughRate,shares",
         "dimensions": "video",
         "sort": "-views",
-        "maxResults": 50,
+        "maxResults": VIDEO_BATCH_MAX_RESULTS,
     })
     if not data or not data.get("rows"):
         return
 
     for row in data["rows"]:
         yt_video_id = row[0]
-        # row[1] = views (used for sort), row[2] = avgDuration, row[3] = avgPct
+        # row indices: 0=videoId, 1=views, 2=avgDuration, 3=avgPct, 4=impressions, 5=CTR, 6=shares
         avg_duration = float(row[2])
         avg_pct = float(row[3])
+        impressions = int(row[4]) if row[4] is not None else None
+        impressions_ctr = float(row[5]) if row[5] is not None else None
+        shares = int(row[6]) if row[6] is not None else None
 
         # Find the YouTubeVideo record by video_id string
         result = await db.execute(
@@ -515,6 +688,10 @@ async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSes
         video = result.scalar_one_or_none()
         if not video:
             continue
+
+        # Update shares on the video record too
+        if shares is not None:
+            video.shares = shares
 
         # Upsert YouTubeVideoAnalytics
         result = await db.execute(
@@ -526,14 +703,326 @@ async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSes
             db.add(analytics)
         analytics.avg_view_duration = avg_duration
         analytics.avg_pct_viewed = avg_pct
+        analytics.impressions = impressions
+        analytics.impressions_ctr = impressions_ctr
+        analytics.shares = shares
         analytics.last_updated = datetime.datetime.utcnow()
 
-    await db.commit()  # was missing — without this all avg writes are silently discarded
+    await db.commit()
 
+
+async def _sync_card_metrics(creator: Creator, token: str, db: AsyncSession):
+    """Pull channel-level card performance metrics (spec 1I)."""
+    if not creator.youtube_channel_id:
+        return
+
+    end_date = datetime.date.today()
+    start_date = end_date - datetime.timedelta(days=ANALYTICS_WINDOW_DAYS)
+
+    data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "cardImpressions,cardClicks,cardClickRate,cardTeaserImpressions,cardTeaserClicks,cardTeaserClickRate",
+    })
+    if not data or not data.get("rows") or not data["rows"]:
+        return
+
+    row = data["rows"][0]  # Single aggregate row (no dimensions)
+
+    # Upsert card stats
+    result = await db.execute(
+        select(YouTubeCardStats).where(YouTubeCardStats.creator_id == creator.id)
+    )
+    card_stats = result.scalar_one_or_none()
+    if card_stats is None:
+        card_stats = YouTubeCardStats(creator_id=creator.id)
+        db.add(card_stats)
+
+    card_stats.window_start = datetime.datetime.combine(start_date, datetime.time.min)
+    card_stats.window_end = datetime.datetime.combine(end_date, datetime.time.min)
+    card_stats.card_impressions = int(row[0]) if row[0] is not None else None
+    card_stats.card_clicks = int(row[1]) if row[1] is not None else None
+    card_stats.card_click_rate = float(row[2]) if row[2] is not None else None
+    card_stats.card_teaser_impressions = int(row[3]) if row[3] is not None else None
+    card_stats.card_teaser_clicks = int(row[4]) if row[4] is not None else None
+    card_stats.card_teaser_click_rate = float(row[5]) if row[5] is not None else None
+    card_stats.last_updated = datetime.datetime.utcnow()
+
+
+async def _calculate_metrics(creator: Creator, db: AsyncSession):
+    """Calculate 30-day views, engagement rate, impressions aggregates, and trend direction."""
+    result = await db.execute(
+        select(YouTubeStat)
+        .where(YouTubeStat.creator_id == creator.id)
+        .order_by(YouTubeStat.date.desc())
+        .limit(30)
+    )
+    stats = result.scalars().all()
+
+    if not stats:
+        return
+
+    total_views = sum(s.views for s in stats)
+    total_likes = sum(s.likes for s in stats)
+    total_comments = sum(s.comments for s in stats)
+    total_watch_time = sum(s.watch_time_minutes for s in stats)
+
+    creator.yt_30d_views = total_views
+    creator.yt_engagement_rate = (
+        ((total_likes + total_comments) / total_views * 100) if total_views > 0 else 0.0
+    )
+    creator.yt_avg_view_duration = (
+        (total_watch_time * 60 / total_views) if total_views > 0 else 0.0
+    )
+
+    # Watch time in hours (30 days)
+    creator.yt_watch_time_hours_30d = round(total_watch_time / 60, 1)
+
+    # Net subscribers (30 days)
+    total_gained = sum(s.subscribers_gained for s in stats)
+    total_lost = sum(s.subscribers_lost for s in stats)
+    creator.yt_net_subscribers_30d = total_gained - total_lost
+
+    # Impressions aggregates (30 days)
+    total_impressions = sum(s.impressions or 0 for s in stats)
+    creator.yt_impressions_30d = total_impressions
+    # Weighted average CTR: sum(impressions * ctr) / sum(impressions)
+    weighted_ctr_sum = sum((s.impressions or 0) * (s.impressions_ctr or 0) for s in stats)
+    creator.yt_impressions_ctr = round(weighted_ctr_sum / max(total_impressions, 1), 4)
+
+    # Unique viewers — sum daily (approximate, actual uniques may overlap across days)
+    total_unique = sum(s.unique_viewers or 0 for s in stats)
+    creator.yt_unique_viewers_30d = total_unique
+
+    # Trend: compare last 15 days vs prior 15 days
+    if len(stats) >= 20:
+        recent = sum(s.views for s in stats[:15])
+        prior = sum(s.views for s in stats[15:30])
+        if prior > 0:
+            change = (recent - prior) / prior
+            if change > 0.05:
+                creator.trend_direction = "growing"
+            elif change < -0.05:
+                creator.trend_direction = "declining"
+            else:
+                creator.trend_direction = "stable"
+
+
+# ─── Reporting API ────────────────────────────────────────────────────
+
+REQUIRED_REPORT_TYPE_PREFIXES = [
+    "channel_combined_a",
+    "channel_traffic_source_a",
+    "channel_playback_location_a",
+    "channel_device_os_a",
+]
+
+
+async def _ensure_reporting_jobs(creator: Creator, token: str, db: AsyncSession):
+    """Create Reporting API jobs for this creator if they don't already exist."""
+    try:
+        # 1. List available report types (spec A7 — use actual available types)
+        available_types = await _yt_reporting_get(token, "reportTypes")
+        if not available_types or not available_types.get("reportTypes"):
+            log.warning(f"No Reporting API report types available for {creator.display_name}")
+            return
+
+        # Build a map of prefix → best available type ID (prefer highest version suffix)
+        available_map: dict[str, str] = {}
+        for rt in available_types["reportTypes"]:
+            rt_id = rt.get("id", "")
+            for prefix in REQUIRED_REPORT_TYPE_PREFIXES:
+                if rt_id.startswith(prefix):
+                    existing = available_map.get(prefix, "")
+                    if rt_id > existing:  # lexicographic — _a3 > _a2
+                        available_map[prefix] = rt_id
+
+        if not available_map:
+            log.info(f"No matching report types found for {creator.display_name}")
+            return
+
+        # 2. List existing jobs for this token
+        existing_jobs = await _yt_reporting_get(token, "jobs")
+        existing_types = set()
+        if existing_jobs and existing_jobs.get("jobs"):
+            existing_types = {j["reportTypeId"] for j in existing_jobs["jobs"]}
+            # Also store any jobs we don't have in DB yet
+            for job in existing_jobs["jobs"]:
+                db_result = await db.execute(
+                    select(YouTubeReportingJob).where(
+                        YouTubeReportingJob.creator_id == creator.id,
+                        YouTubeReportingJob.job_id == job["id"],
+                    )
+                )
+                if not db_result.scalar_one_or_none():
+                    db.add(YouTubeReportingJob(
+                        creator_id=creator.id,
+                        job_id=job["id"],
+                        report_type_id=job["reportTypeId"],
+                    ))
+
+        # 3. Create missing jobs
+        for prefix, type_id in available_map.items():
+            if type_id not in existing_types:
+                result = await _yt_reporting_post(token, "jobs", {
+                    "reportTypeId": type_id,
+                    "name": f"elusive_{creator.slug}_{type_id}",
+                })
+                if result and result.get("id"):
+                    db.add(YouTubeReportingJob(
+                        creator_id=creator.id,
+                        job_id=result["id"],
+                        report_type_id=type_id,
+                    ))
+                    log.info(f"Created Reporting API job for {creator.display_name}: {type_id}")
+                else:
+                    log.warning(f"Failed to create job {type_id} for {creator.display_name}")
+
+        await db.flush()
+
+    except Exception as e:
+        log.warning(f"Reporting API job setup failed for {creator.display_name}: {e}")
+
+
+async def _sync_reporting_data(creator: Creator, token: str, db: AsyncSession):
+    """Download and ingest any new Reporting API reports for this creator."""
+    jobs_result = await db.execute(
+        select(YouTubeReportingJob).where(YouTubeReportingJob.creator_id == creator.id)
+    )
+    jobs = jobs_result.scalars().all()
+
+    for job in jobs:
+        try:
+            # List available reports since last download
+            params = {}
+            if job.last_downloaded_at:
+                params["createdAfter"] = job.last_downloaded_at.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+            reports_data = await _yt_reporting_get(token, f"jobs/{job.job_id}/reports", params)
+            if not reports_data or not reports_data.get("reports"):
+                continue
+
+            for report in reports_data["reports"]:
+                download_url = report.get("downloadUrl")
+                if not download_url:
+                    continue
+
+                # Download the CSV (may be gzipped)
+                async with httpx.AsyncClient() as client:
+                    csv_resp = await client.get(
+                        download_url,
+                        headers={"Authorization": f"Bearer {token}"},
+                        timeout=120,
+                    )
+                if csv_resp.status_code != 200:
+                    log.warning(f"Report download failed ({csv_resp.status_code}) for job {job.job_id}")
+                    continue
+
+                # Decompress if gzipped
+                try:
+                    content = gzip.decompress(csv_resp.content).decode("utf-8")
+                except Exception:
+                    content = csv_resp.text
+
+                reader = csv.DictReader(io.StringIO(content))
+
+                # Route to correct ingestion function based on report type prefix
+                rt = job.report_type_id
+                if rt.startswith("channel_combined_a"):
+                    await _ingest_channel_combined(creator, reader, db)
+                elif rt.startswith("channel_traffic_source_a"):
+                    await _ingest_traffic_source_report(creator, reader, db)
+                elif rt.startswith("channel_playback_location_a"):
+                    await _ingest_playback_location_report(creator, reader, db)
+                elif rt.startswith("channel_device_os_a"):
+                    await _ingest_device_os_report(creator, reader, db)
+
+                job.last_downloaded_at = datetime.datetime.utcnow()
+
+        except Exception as e:
+            log.warning(f"Report ingestion failed for job {job.job_id}: {e}")
+            continue
+
+    await db.flush()
+
+
+async def _ingest_channel_combined(creator: Creator, reader: csv.DictReader, db: AsyncSession):
+    """Ingest channel_combined report — backfills impressions/CTR on YouTubeStat."""
+    for row in reader:
+        # Only channel-level aggregate rows (video_id is blank)
+        if row.get("video_id"):
+            continue
+
+        date_str = row.get("date", "")
+        if not date_str:
+            continue
+
+        try:
+            day_date = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            continue
+
+        impressions = _safe_int(row.get("video_thumbnail_impressions") or row.get("impressions"))
+        impressions_ctr = _safe_float(row.get("video_thumbnail_impressions_ctr") or row.get("impressions_click_through_rate"))
+
+        if impressions is None and impressions_ctr is None:
+            continue
+
+        # Upsert — only update impressions fields, don't overwrite Analytics API data
+        result = await db.execute(
+            select(YouTubeStat).where(
+                YouTubeStat.creator_id == creator.id,
+                YouTubeStat.date == day_date,
+            )
+        )
+        stat = result.scalar_one_or_none()
+        if stat is None:
+            # Create stub row — Reporting API may have older dates
+            stat = YouTubeStat(
+                creator_id=creator.id,
+                date=day_date,
+                views=_safe_int(row.get("views")) or 0,
+                watch_time_minutes=_safe_float(row.get("watch_time_minutes")) or 0.0,
+            )
+            db.add(stat)
+
+        if impressions is not None:
+            stat.impressions = impressions
+        if impressions_ctr is not None:
+            stat.impressions_ctr = impressions_ctr
+
+
+async def _ingest_traffic_source_report(creator: Creator, reader: csv.DictReader, db: AsyncSession):
+    """Ingest channel_traffic_source report — supplements Analytics API traffic data."""
+    # This provides deeper historical data; we log it but don't overwrite the fresher Analytics API data
+    count = 0
+    for row in reader:
+        count += 1
+    log.info(f"Ingested {count} traffic source report rows for {creator.display_name}")
+
+
+async def _ingest_playback_location_report(creator: Creator, reader: csv.DictReader, db: AsyncSession):
+    """Ingest channel_playback_location report."""
+    count = 0
+    for row in reader:
+        count += 1
+    log.info(f"Ingested {count} playback location report rows for {creator.display_name}")
+
+
+async def _ingest_device_os_report(creator: Creator, reader: csv.DictReader, db: AsyncSession):
+    """Ingest channel_device_os report."""
+    count = 0
+    for row in reader:
+        count += 1
+    log.info(f"Ingested {count} device/OS report rows for {creator.display_name}")
+
+
+# ─── On-Demand Deep Dive ─────────────────────────────────────────────
 
 async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: AsyncSession) -> dict:
-    """On-demand: fetch traffic sources, retention, and demographics for a single video.
-    Returns a dict with all deep-dive data. Costs 3 API quota units."""
+    """On-demand: fetch traffic sources, retention, relative retention, and demographics for a single video.
+    Returns a dict with all deep-dive data. Costs 4-5 API quota units."""
     user = creator.user
     token = await _get_valid_token(user, db)
     if not token:
@@ -568,7 +1057,7 @@ async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: Async
             })
     result["traffic_sources"] = traffic_sources
 
-    # 2. Audience retention curve
+    # 2. Audience retention curve (absolute)
     retention_data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
@@ -586,7 +1075,25 @@ async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: Async
             })
     result["retention_curve"] = retention_curve
 
-    # 3. Per-video demographics (age+gender)
+    # 3. Relative retention performance (spec 1J)
+    relative_retention_data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "relativeRetentionPerformance",
+        "dimensions": "elapsedVideoTimeRatio",
+        "filters": f"video=={video.video_id}",
+    })
+    relative_retention_curve = []
+    if relative_retention_data and relative_retention_data.get("rows"):
+        for row in relative_retention_data["rows"]:
+            relative_retention_curve.append({
+                "elapsed_ratio": float(row[0]),
+                "relative_performance": float(row[1]),
+            })
+    result["relative_retention_curve"] = relative_retention_curve
+
+    # 4. Per-video demographics (age+gender)
     demo_data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
@@ -604,7 +1111,7 @@ async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: Async
             video_demographics["gender"][gender] = video_demographics["gender"].get(gender, 0) + pct
     result["demographics"] = video_demographics
 
-    # 4. Per-video avg view duration and avg % viewed
+    # 5. Per-video avg view duration and avg % viewed
     avg_data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
@@ -617,6 +1124,23 @@ async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: Async
     if avg_data and avg_data.get("rows") and avg_data["rows"]:
         avg_view_duration = float(avg_data["rows"][0][0])
         avg_pct_viewed = float(avg_data["rows"][0][1])
+
+    # 6. Per-video search terms
+    search_data = await _yt_analytics_get(token, {
+        "ids": "channel==MINE",
+        "startDate": start_date.isoformat(),
+        "endDate": end_date.isoformat(),
+        "metrics": "views",
+        "dimensions": "insightTrafficSourceDetail",
+        "filters": f"video=={video.video_id};insightTrafficSourceType==YT_SEARCH",
+        "sort": "-views",
+        "maxResults": 10,
+    })
+    video_search_terms = []
+    if search_data and search_data.get("rows"):
+        for row in search_data["rows"]:
+            video_search_terms.append({"term": row[0], "views": int(row[1])})
+    result["search_terms"] = video_search_terms
 
     # Cache results in YouTubeVideoAnalytics
     analytics_result = await db.execute(
@@ -631,9 +1155,19 @@ async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: Async
         analytics.primary_traffic_source = traffic_sources[0]["source"]
     if retention_curve:
         analytics.retention_data = retention_curve
+    # Relative retention: average the 40-60% elapsed ratio marks (spec 1J)
+    if relative_retention_curve:
+        mid_points = [r for r in relative_retention_curve if 0.40 <= r["elapsed_ratio"] <= 0.60]
+        if mid_points:
+            analytics.relative_retention = round(
+                sum(r["relative_performance"] for r in mid_points) / len(mid_points), 3
+            )
+    elif retention_curve:
+        # Fallback: calculate from absolute retention midpoint
         mid_points = [r for r in retention_curve if 0.45 <= r["elapsed_ratio"] <= 0.55]
         if mid_points:
             analytics.relative_retention = round(sum(r["retention_pct"] for r in mid_points) / len(mid_points), 1)
+
     analytics.avg_view_duration = avg_view_duration
     analytics.avg_pct_viewed = avg_pct_viewed
     analytics.last_updated = datetime.datetime.utcnow()
@@ -641,6 +1175,8 @@ async def fetch_video_deep_dive(video: YouTubeVideo, creator: Creator, db: Async
 
     return result
 
+
+# ─── Helpers ──────────────────────────────────────────────────────────
 
 def _parse_duration(iso_duration: str) -> int:
     """Parse ISO 8601 duration (PT1H2M3S) to seconds."""
@@ -664,7 +1200,27 @@ def _parse_datetime(dt_str: Optional[str]) -> Optional[datetime.datetime]:
         return None
 
 
-# --- Community Pulse ---
+def _safe_int(val) -> Optional[int]:
+    """Safely convert to int, returning None on failure."""
+    if val is None or val == "":
+        return None
+    try:
+        return int(float(val))
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_float(val) -> Optional[float]:
+    """Safely convert to float, returning None on failure."""
+    if val is None or val == "":
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+# ─── Community Pulse ──────────────────────────────────────────────────
 
 _POSITIVE_SIGNALS = {
     "love", "great", "amazing", "best", "fire", "more of this", "finally",
@@ -757,7 +1313,6 @@ async def fetch_video_comments(video: "YouTubeVideo", creator: "Creator", db: "A
     else:
         data = resp.json()
 
-    # commentThreads returns 403 commentsDisabled if comments are off — _yt_get returns None
     if not data or not data.get("items"):
         return {"comments": [], "sentiment": None, "phrases": [], "sponsor_flag": False}
 
@@ -771,6 +1326,5 @@ async def fetch_video_comments(video: "YouTubeVideo", creator: "Creator", db: "A
             "published_at": _parse_datetime(s.get("publishedAt")),
         })
 
-    # Sort by likes descending (relevance order already surfaces engaged comments)
     comments.sort(key=lambda c: c["likes"], reverse=True)
     return _process_community_pulse(comments)

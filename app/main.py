@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db, init_db
-from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic, YouTubeVideoAnalytics, YouTubeTrafficSource
+from app.models import Creator, User, YouTubeStat, YouTubeVideo, YouTubeDemographic, YouTubeVideoAnalytics, YouTubeTrafficSource, YouTubeSearchTerm, YouTubeCardStats, YouTubeReportingJob
 from app.auth import handle_google_login, handle_google_callback
 from app.api import router as api_router
 from app.scheduler import start_scheduler, stop_scheduler
