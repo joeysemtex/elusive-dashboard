@@ -262,17 +262,16 @@ async def instagram_data_deletion(request: Request, db: AsyncSession = Depends(g
 
         # Decode payload
         payload_data = json_mod.loads(base64.urlsafe_b64decode(payload + "=="))
-        fb_user_id = str(payload_data.get("user_id", ""))
+        ig_user_id = str(payload_data.get("user_id", ""))
 
-        # Find user by instagram_user_id (which stores the IG business account ID)
-        # The FB user_id from the signed request may differ, so also check directly
+        # Find user by instagram_user_id
         user_result = await db.execute(
             select(User).where(User.instagram_user_id != None)
         )
         users = user_result.scalars().all()
         target_user = None
         for u in users:
-            if u.instagram_user_id == fb_user_id:
+            if u.instagram_user_id == ig_user_id:
                 target_user = u
                 break
 
@@ -324,10 +323,10 @@ async def instagram_deauthorize(request: Request, db: AsyncSession = Depends(get
             raise HTTPException(status_code=403, detail="Invalid signature")
 
         payload_data = json_mod.loads(base64.urlsafe_b64decode(payload + "=="))
-        fb_user_id = str(payload_data.get("user_id", ""))
+        ig_user_id = str(payload_data.get("user_id", ""))
 
         user_result = await db.execute(
-            select(User).where(User.instagram_user_id == fb_user_id)
+            select(User).where(User.instagram_user_id == ig_user_id)
         )
         target_user = user_result.scalar_one_or_none()
         if target_user:

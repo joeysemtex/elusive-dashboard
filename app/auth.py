@@ -36,19 +36,20 @@ oauth.register(
     },
 )
 
-# Instagram / Meta OAuth registration
+# Instagram OAuth registration (Instagram API with Instagram Login)
 oauth.register(
     name="instagram",
     client_id=settings.META_APP_ID,
     client_secret=settings.META_APP_SECRET,
-    authorize_url="https://www.facebook.com/v21.0/dialog/oauth",
-    access_token_url="https://graph.facebook.com/v21.0/oauth/access_token",
+    authorize_url="https://www.instagram.com/oauth/authorize",
+    access_token_url="https://api.instagram.com/oauth/access_token",
     client_kwargs={
-        "scope": "instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement",
+        "scope": "instagram_business_basic,instagram_business_manage_insights",
+        "token_endpoint_auth_method": "client_secret_post",
     },
 )
 
-GRAPH_BASE = "https://graph.facebook.com/v21.0"
+IG_GRAPH = "https://graph.instagram.com"
 
 
 async def handle_google_login(request: Request):
@@ -136,7 +137,7 @@ async def handle_google_callback(request: Request, db: AsyncSession) -> User:
 
 
 async def handle_instagram_login(request: Request):
-    """Redirect to Facebook/Meta consent screen for Instagram access."""
+    """Redirect to Instagram consent screen for Instagram access."""
     redirect_uri = str(request.url_for("instagram_callback"))
     if redirect_uri.startswith("http://") and settings.BASE_URL.startswith("https://"):
         redirect_uri = redirect_uri.replace("http://", "https://", 1)
@@ -145,6 +146,11 @@ async def handle_instagram_login(request: Request):
 
 async def handle_instagram_callback(request: Request, db: AsyncSession) -> dict:
     """Process Instagram OAuth callback. Connects IG to existing user.
+
+    Instagram API with Instagram Login flow:
+      1. Exchange auth code → short-lived token (api.instagram.com)
+      2. Exchange short-lived → long-lived token (graph.instagram.com)
+      3. Fetch profile via /me endpoint
 
     Returns dict with 'success' bool and optional 'error' key.
     """
@@ -163,20 +169,20 @@ async def handle_instagram_callback(request: Request, db: AsyncSession) -> dict:
     if not creator:
         return {"success": False, "error": "no_creator_profile"}
 
-    # Step 1: Exchange auth code for short-lived token
+    # Step 1: Exchange auth code for short-lived token (api.instagram.com)
     token_data = await oauth.instagram.authorize_access_token(request)
     short_token = token_data.get("access_token", "")
+    ig_user_id = str(token_data.get("user_id", ""))
     if not short_token:
         log.error("Instagram OAuth: no access_token in response")
         return {"success": False, "error": "no_token"}
 
     async with httpx.AsyncClient() as client:
-        # Step 2: Exchange short-lived → long-lived token (60 days)
-        resp = await client.get(f"{GRAPH_BASE}/oauth/access_token", params={
-            "grant_type": "fb_exchange_token",
-            "client_id": settings.META_APP_ID,
+        # Step 2: Exchange short-lived → long-lived token (graph.instagram.com)
+        resp = await client.get(f"{IG_GRAPH}/access_token", params={
+            "grant_type": "ig_exchange_token",
             "client_secret": settings.META_APP_SECRET,
-            "fb_exchange_token": short_token,
+            "access_token": short_token,
         })
         if resp.status_code != 200:
             log.error(f"Instagram long-lived token exchange failed: {resp.text}")
@@ -186,46 +192,26 @@ async def handle_instagram_callback(request: Request, db: AsyncSession) -> dict:
         long_token = ll_data.get("access_token", "")
         expires_in = ll_data.get("expires_in", 5184000)  # default 60 days
 
-        # Step 3: Discover Instagram Business/Creator Account
-        resp = await client.get(f"{GRAPH_BASE}/me/accounts", params={
+        # Step 3: Fetch profile via /me
+        resp = await client.get(f"{IG_GRAPH}/me", params={
             "access_token": long_token,
-            "fields": "id,name,instagram_business_account",
-        })
-        if resp.status_code != 200:
-            log.error(f"Instagram page discovery failed: {resp.text}")
-            return {"success": False, "error": "page_discovery_failed"}
-
-        pages = resp.json().get("data", [])
-        ig_account_id = None
-        for page in pages:
-            ig_biz = page.get("instagram_business_account")
-            if ig_biz:
-                ig_account_id = ig_biz.get("id")
-                break
-
-        if not ig_account_id:
-            log.warning(f"No Instagram Business account found for user {user.email}")
-            return {"success": False, "error": "no_ig_business"}
-
-        # Step 4: Fetch IG profile info
-        resp = await client.get(f"{GRAPH_BASE}/{ig_account_id}", params={
-            "access_token": long_token,
-            "fields": "username,followers_count,profile_picture_url",
+            "fields": "user_id,username,name,account_type,profile_picture_url,followers_count,media_count",
         })
         if resp.status_code != 200:
             log.error(f"Instagram profile fetch failed: {resp.text}")
             return {"success": False, "error": "profile_fetch_failed"}
 
         profile = resp.json()
+        ig_account_id = str(profile.get("user_id", ig_user_id))
 
-    # Step 5: Store on User model
+    # Step 4: Store on User model
     user.instagram_access_token = encrypt_token(long_token)
     user.instagram_token_expiry = (
         datetime.datetime.utcnow() + datetime.timedelta(seconds=expires_in)
     )
     user.instagram_user_id = ig_account_id
 
-    # Step 6: Store on Creator model
+    # Step 5: Store on Creator model
     creator.instagram_account_id = ig_account_id
     creator.instagram_username = profile.get("username", "")
     creator.ig_followers = profile.get("followers_count", 0)

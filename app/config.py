@@ -21,7 +21,6 @@ class Settings:
         e.strip() for e in os.getenv("VIEWER_EMAILS", "").split(",") if e.strip()
     ]
     YOUTUBE_REFRESH_HOURS: int = 6
-    INSTAGRAM_REFRESH_HOURS: int = 6
 
     @property
     def google_redirect_uri(self) -> str:

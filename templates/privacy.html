@@ -96,8 +96,8 @@
 
             <p>When you connect your Instagram account, we receive:</p>
             <ul>
-                <li>An OAuth access token via Facebook Login that grants read-only access to your Instagram Business or Creator account.</li>
-                <li>Your Instagram username and profile picture.</li>
+                <li>An OAuth access token via Instagram Login that grants read-only access to your Instagram Business or Creator account.</li>
+                <li>Your Instagram username, profile picture, and follower count.</li>
             </ul>
             <p>We use that token to retrieve:</p>
             <ul>
@@ -105,7 +105,7 @@
                 <li>Account insights (reach over the last 30 days).</li>
                 <li>Recent post metrics (likes, comments) to calculate engagement rate.</li>
             </ul>
-            <p>We do not access your Instagram direct messages, post to your account, or access any Facebook data beyond what is needed to discover your linked Instagram account.</p>
+            <p>We do not access your Instagram direct messages, post to your account, or access any data outside of your Instagram Business or Creator account.</p>
 
             <h2>2. How tokens are stored</h2>
             <p>Your Google and Instagram OAuth tokens are encrypted at rest using Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256) before they are saved to the database. The encryption key is held as a server-side environment variable and is never exposed to the browser or included in logs.</p>
@@ -119,7 +119,7 @@
             <h2>5. Third-party services</h2>
             <ul>
                 <li><strong>Google OAuth / YouTube Data API</strong> — used to authenticate you and fetch YouTube channel data. Subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
-                <li><strong>Meta / Instagram Graph API</strong> — used to connect your Instagram account and fetch account insights. Subject to <a href="https://www.facebook.com/privacy/policy/" target="_blank" rel="noopener">Meta's Privacy Policy</a>.</li>
+                <li><strong>Instagram API</strong> — used to connect your Instagram account via Instagram Login and fetch account insights. Subject to <a href="https://www.instagram.com/legal/privacy/" target="_blank" rel="noopener">Instagram's Privacy Policy</a>.</li>
                 <li><strong>Railway</strong> — cloud hosting provider where the application and database run. Subject to <a href="https://railway.com/legal/privacy" target="_blank" rel="noopener">Railway's Privacy Policy</a>.</li>
             </ul>
             <p>No other third-party analytics, tracking, or advertising services are used on this dashboard.</p>

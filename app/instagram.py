@@ -13,7 +13,7 @@ from app.models import Creator, User
 
 log = logging.getLogger("elusive.instagram")
 
-GRAPH_BASE = "https://graph.facebook.com/v21.0"
+IG_GRAPH = "https://graph.instagram.com"
 IG_REFRESH_URL = "https://graph.instagram.com/refresh_access_token"
 
 
@@ -77,7 +77,7 @@ async def _get_valid_ig_token(user: User, db: AsyncSession) -> Optional[str]:
 
 async def _ig_get(token: str, endpoint: str, params: Optional[dict] = None) -> Optional[dict]:
     """Authenticated GET to Instagram Graph API."""
-    url = f"{GRAPH_BASE}/{endpoint}"
+    url = f"{IG_GRAPH}/{endpoint}"
     request_params = {"access_token": token}
     if params:
         request_params.update(params)
