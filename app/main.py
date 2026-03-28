@@ -152,6 +152,11 @@ async def index(request: Request, db: AsyncSession = Depends(get_db)):
         return RedirectResponse("/login?error=no_profile")
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy(request: Request):
+    return templates.TemplateResponse(request, "privacy.html")
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse(request, "login.html")

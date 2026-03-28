@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy — Elusive Analytics</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .privacy-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 48px 24px;
+            background: var(--off-white, #F7F6F3);
+        }
+        .privacy-card {
+            max-width: 680px;
+            width: 100%;
+            background: #fff;
+            border-radius: 12px;
+            padding: 40px 36px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .privacy-card h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            color: var(--charcoal, #1C1C1C);
+        }
+        .privacy-card .effective {
+            font-size: 12px;
+            color: var(--mid-gray, #8C8C8C);
+            margin-bottom: 28px;
+        }
+        .privacy-card h2 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-top: 24px;
+            margin-bottom: 8px;
+            color: var(--charcoal, #1C1C1C);
+        }
+        .privacy-card p,
+        .privacy-card li {
+            font-size: 13px;
+            line-height: 1.65;
+            color: var(--dark-gray, #444);
+        }
+        .privacy-card ul {
+            padding-left: 20px;
+            margin: 8px 0;
+        }
+        .privacy-card li {
+            margin-bottom: 4px;
+        }
+        .privacy-card a {
+            color: var(--gold, #C9A84C);
+            text-decoration: none;
+        }
+        .privacy-card a:hover {
+            text-decoration: underline;
+        }
+        .privacy-back {
+            display: inline-block;
+            margin-top: 28px;
+            font-size: 13px;
+            color: var(--gold, #C9A84C);
+            text-decoration: none;
+        }
+        .privacy-back:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="privacy-page">
+        <div class="privacy-card">
+            <h1>Privacy Policy</h1>
+            <p class="effective">Effective 28 March 2026</p>
+
+            <p>Elusive Analytics ("we", "us") is operated by Elusive Management. This policy explains what data the dashboard collects, how it is stored, and your rights.</p>
+
+            <h2>1. What we collect</h2>
+            <p>When you sign in with Google, we receive:</p>
+            <ul>
+                <li>Your Google account email address, display name, and profile picture.</li>
+                <li>An OAuth access token and refresh token that grant read-only access to your YouTube channel and YouTube Analytics data.</li>
+            </ul>
+            <p>We use those tokens to retrieve:</p>
+            <ul>
+                <li>Channel statistics (subscribers, views, watch time).</li>
+                <li>Video metadata (titles, thumbnails, publish dates, view counts, likes, comments).</li>
+                <li>Analytics data (daily views, audience demographics, traffic sources, retention).</li>
+            </ul>
+            <p>We do not access your Gmail, Google Drive, contacts, or any data outside of YouTube.</p>
+
+            <h2>2. How tokens are stored</h2>
+            <p>Your Google OAuth tokens are encrypted at rest using Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256) before they are saved to the database. The encryption key is held as a server-side environment variable and is never exposed to the browser or included in logs.</p>
+
+            <h2>3. How data is used</h2>
+            <p>Your YouTube data is used solely to populate the Elusive Analytics dashboard so that you and your management team can track channel performance, identify trends, and prepare for brand partnerships. We never sell, share, or transfer your data to third parties for advertising or marketing purposes.</p>
+
+            <h2>4. Data retention</h2>
+            <p>We retain your analytics snapshots (daily stats, video metrics) for as long as your account is active. If you request account deletion, all stored data — including tokens, stats, and profile information — will be permanently removed within 30 days.</p>
+
+            <h2>5. Third-party services</h2>
+            <ul>
+                <li><strong>Google OAuth / YouTube Data API</strong> — used to authenticate you and fetch channel data. Subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+                <li><strong>Railway</strong> — cloud hosting provider where the application and database run. Subject to <a href="https://railway.com/legal/privacy" target="_blank" rel="noopener">Railway's Privacy Policy</a>.</li>
+            </ul>
+            <p>No other third-party analytics, tracking, or advertising services are used on this dashboard.</p>
+
+            <h2>6. Cookies</h2>
+            <p>We use a single session cookie to keep you logged in. It contains only a session identifier — no personal data. No third-party cookies or tracking pixels are present.</p>
+
+            <h2>7. Your rights</h2>
+            <p>You can:</p>
+            <ul>
+                <li>Revoke the dashboard's access to your YouTube data at any time via your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google account permissions</a>.</li>
+                <li>Request a copy of all data we hold about you.</li>
+                <li>Request deletion of your account and all associated data.</li>
+            </ul>
+
+            <h2>8. Contact</h2>
+            <p>For any privacy-related questions or requests, email <a href="mailto:josephjsemaan@gmail.com">josephjsemaan@gmail.com</a>.</p>
+
+            <a href="/login" class="privacy-back">&larr; Back to login</a>
+        </div>
+    </div>
+</body>
+</html>

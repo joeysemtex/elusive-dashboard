@@ -24,7 +24,7 @@
             <div class="sidebar-nav">
                 <div class="nav-section">
                     <div class="nav-section-title">Overview</div>
-                    {% if user.role == 'admin' %}
+                    {% if user.role in ('admin', 'viewer') %}
                     <a href="/dashboard" class="nav-item {{ 'active' if request.url.path == '/dashboard' }}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                         <span>Agency</span>
@@ -32,7 +32,7 @@
                     {% endif %}
                 </div>
 
-                {% if user.role == 'admin' and creators is defined %}
+                {% if user.role in ('admin', 'viewer') and creators is defined %}
                 <div class="nav-section">
                     <div class="nav-section-title">Creators</div>
                     {% for c in creators %}
