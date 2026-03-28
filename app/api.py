@@ -74,16 +74,16 @@ async def get_creator_youtube(
     if not creator:
         raise HTTPException(status_code=404, detail="Creator not found")
 
-    # Recent videos
+    # All videos (no limit — intake needs full history for conservative avg)
     vids_result = await db.execute(
         select(YouTubeVideo)
+        .options(selectinload(YouTubeVideo.analytics))
         .where(YouTubeVideo.creator_id == creator_id)
         .order_by(YouTubeVideo.published_at.desc())
-        .limit(10)
     )
     videos = vids_result.scalars().all()
 
-    # Daily stats (30 days)
+    # Daily stats (30 days) — includes subscribers_gained/lost
     stats_result = await db.execute(
         select(YouTubeStat)
         .where(YouTubeStat.creator_id == creator_id)
@@ -92,12 +92,39 @@ async def get_creator_youtube(
     )
     daily_stats = stats_result.scalars().all()
 
-    # Demographics
+    # Demographics — includes subscribedStatus for returning viewer proxy
     demo_result = await db.execute(
         select(YouTubeDemographic)
         .where(YouTubeDemographic.creator_id == creator_id)
     )
     demographics = demo_result.scalars().all()
+
+    # Channel-level traffic sources (video_id IS NULL = channel aggregate)
+    traffic_result = await db.execute(
+        select(YouTubeTrafficSource)
+        .where(
+            YouTubeTrafficSource.creator_id == creator_id,
+            YouTubeTrafficSource.video_id == None,
+        )
+        .order_by(YouTubeTrafficSource.views.desc())
+    )
+    traffic_sources = traffic_result.scalars().all()
+
+    # Derived: net subscribers over window
+    subs_gained = sum(s.subscribers_gained or 0 for s in daily_stats)
+    subs_lost   = sum(s.subscribers_lost  or 0 for s in daily_stats)
+    net_subs_30d = subs_gained - subs_lost
+
+    # Derived: returning viewer % from subscribedStatus demographic
+    subscribed_pct = next(
+        (d.percentage for d in demographics
+         if d.dimension == "subscribedStatus" and "subscribed" in (d.value or "").lower()
+         and "not" not in (d.value or "").lower()),
+        None
+    )
+
+    # Total traffic views (for % calculation)
+    total_traffic_views = sum(t.views or 0 for t in traffic_sources) or 1
 
     return {
         "creator": {
@@ -112,6 +139,10 @@ async def get_creator_youtube(
             "engagement_rate": round(creator.yt_engagement_rate, 2),
             "avg_view_duration_seconds": round(creator.yt_avg_view_duration, 1),
             "trend": creator.trend_direction,
+            "last_yt_sync": creator.last_yt_sync.isoformat() if creator.last_yt_sync else None,
+            # Derived fields
+            "yt_net_subscribers_30d": net_subs_30d,
+            "returning_viewer_pct": round(subscribed_pct, 1) if subscribed_pct is not None else None,
         },
         "videos": [
             {
@@ -124,6 +155,10 @@ async def get_creator_youtube(
                 "likes": v.likes,
                 "comments": v.comments,
                 "engagement_rate": round(v.engagement_rate, 2),
+                "format": "short" if (v.duration_seconds or 0) < 60 else "long_form",
+                # Per-video deep analytics (None if not yet collected)
+                "avg_view_duration_seconds": round(v.analytics.avg_view_duration, 1) if v.analytics else None,
+                "avg_pct_viewed": round(v.analytics.avg_pct_viewed, 1) if v.analytics else None,
             }
             for v in videos
         ],
@@ -134,6 +169,8 @@ async def get_creator_youtube(
                 "watch_time_minutes": round(s.watch_time_minutes, 1),
                 "likes": s.likes,
                 "comments": s.comments,
+                "subscribers_gained": s.subscribers_gained or 0,
+                "subscribers_lost": s.subscribers_lost or 0,
             }
             for s in reversed(daily_stats)
         ],
@@ -142,15 +179,26 @@ async def get_creator_youtube(
                 {"value": d.value, "percentage": round(d.percentage, 1)}
                 for d in demographics if d.dimension == dim
             ]
-            for dim in ["ageGroup", "gender", "country", "deviceType"]
+            for dim in ["ageGroup", "gender", "country", "deviceType", "subscribedStatus"]
         },
+        "traffic_sources": [
+            {
+                "source": t.source_type,
+                "views": t.views,
+                "watch_time_minutes": round(t.watch_time_minutes, 1),
+                "pct": round((t.views or 0) / total_traffic_views * 100, 1),
+            }
+            for t in traffic_sources
+        ] if traffic_sources else [],
         "long_form": {
             "count": len([v for v in videos if (v.duration_seconds or 0) >= 60]),
             "videos": [
                 {
                     "video_id": v.video_id, "title": v.title, "views": v.views,
+                    "published_at": v.published_at.isoformat() if v.published_at else None,
                     "engagement_rate": round(v.engagement_rate, 2),
                     "duration_seconds": v.duration_seconds,
+                    "avg_pct_viewed": round(v.analytics.avg_pct_viewed, 1) if v.analytics else None,
                 }
                 for v in videos if (v.duration_seconds or 0) >= 60
             ],
@@ -160,6 +208,7 @@ async def get_creator_youtube(
             "videos": [
                 {
                     "video_id": v.video_id, "title": v.title, "views": v.views,
+                    "published_at": v.published_at.isoformat() if v.published_at else None,
                     "engagement_rate": round(v.engagement_rate, 2),
                     "duration_seconds": v.duration_seconds,
                 }

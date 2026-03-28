@@ -198,6 +198,50 @@ All endpoints require `X-Api-Key` header with the `PIPELINE_API_KEY` value. The 
 
 ---
 
+## Intake Pipeline Integration (28 March 2026)
+
+Three new scripts were added to `scripts/` by Claude Code to wire the dashboard API into the data-intake pipeline. See `INTAKE-PIPELINE-HANDOFF.md` for the full spec.
+
+### Scripts added
+
+| File | Status | Purpose |
+|---|---|---|
+| `scripts/dashboard_intake.py` | ✅ Complete | Core API library — fetch, resolve, freshness check, metrics mapping |
+| `scripts/intake_runner.py` | ✅ Complete | CLI entry point — `--creator`, `--window`, `--purpose`, `--brand` args |
+| `scripts/validate_intake.py` | ✅ Complete | Validation test — single creator or `--all` roster sweep |
+
+### What's still outstanding (next Claude Code session)
+
+**Steps 3–8 not yet wired up.** The `intake_runner.py` currently ends at a printed summary. The metrics dict is correctly shaped — it just needs to be handed into the existing analysis, PDF generation, and config-population steps. Entry point:
+
+```python
+from scripts.dashboard_intake import (
+    get_all_creators, resolve_creator,
+    fetch_youtube_data, check_data_freshness,
+    map_api_to_intake_metrics
+)
+metrics = map_api_to_intake_metrics(fetch_youtube_data(creator_id), window_days=30)
+# → hand metrics into existing Steps 3–8 of elusive-data-intake skill
+```
+
+**Source flag to respect:** When `metrics["source"] == "elusive-dashboard-api"`, skip all CSV parsing logic in the intake pipeline. The metrics dict is already fully populated — proceed directly to the analysis steps (Step 4 onwards in the skill).
+
+**Path note:** The data-intake skill was updated to use Windows paths (`C:\Users\jjsem\...`). If Cowork is executing the CSV fallback path directly, use the Cowork mount path instead. The API path is network-based and works from either environment.
+
+**Fields not yet in API (already in DB — low-effort addition to `app/api.py`):**
+
+| Field | Table | Priority |
+|---|---|---|
+| Avg % viewed per video | `youtube_video_analytics` | High |
+| Impressions + CTR | `youtube_traffic_sources` | Medium |
+| Returning vs new viewer % | `youtube_demographics` | Medium |
+| Traffic source breakdown | `youtube_traffic_sources` | Low |
+| Daily subscriber gain/loss | `youtube_stats` | Low |
+
+**Repo state:** All three scripts are in `scripts/`. No new dependencies (httpx + python-dotenv were already in `requirements.txt`). Files are not yet committed — stage and commit when ready.
+
+---
+
 ## Known Considerations
 
 1. **Google OAuth is in Testing mode** — max 100 users. Fine for the current roster. If Elusive grows past 100 creators, Joey submits for Google verification (2-4 weeks).
