@@ -1386,6 +1386,264 @@ a:hover { color: var(--gold-light); }
     margin-left: 5px;
 }
 
+/* ============================================================
+   UX/UI AUDIT FIXES — v1.0 (March 2026)
+   Sprint 1: Mobile layout (M-01 → M-08)
+   Sprint 2: Desktop hierarchy + trust signals (D-01 → D-05)
+   Sprint 3: Polish + accessibility (D-03 → D-07)
+   ============================================================ */
+
+/* --- Sprint 1: M-01 — Stat card single-column stack on mobile --- */
+@media (max-width: 480px) {
+    .metrics-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px;
+    }
+    .main-content {
+        padding: 16px;
+    }
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 20px;
+    }
+    /* M-04: 2-column cards from 360px (overridden to 1-col below 360px) */
+    .creators-grid {
+        grid-template-columns: 1fr;
+    }
+    .creator-stats {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    .audience-grid {
+        grid-template-columns: 1fr;
+    }
+    .deep-dive-hero {
+        grid-template-columns: 1fr;
+    }
+    .deep-dive-metrics {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    /* Reduce card padding on mobile */
+    .metric-card {
+        padding: 16px;
+    }
+    .metric-value {
+        font-size: 24px;
+    }
+}
+
+/* M-04: 2-column cards on wider mobile (360–480px) */
+@media (min-width: 360px) and (max-width: 480px) {
+    .metrics-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 10px;
+    }
+}
+
+/* --- Sprint 1: M-02 — Scrollable tab strip on mobile --- */
+@media (max-width: 768px) {
+    .tab-bar {
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        gap: 0;
+        /* Scroll fade hint on right */
+        mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+    }
+    .tab-bar::-webkit-scrollbar {
+        display: none;
+    }
+    .tab-btn {
+        flex-shrink: 0;
+        min-height: 44px;
+        padding: 10px 16px;
+    }
+}
+
+/* --- Sprint 1: M-03 — Sub-label font sizes (13px minimum) --- */
+.split-label {
+    font-size: 11px;
+}
+.split-item {
+    font-size: 13px;
+}
+
+/* --- Sprint 1: M-05 — Card minimum tap target height --- */
+.metric-card {
+    min-height: 80px;
+}
+
+/* --- Sprint 1: M-06 — Delta badge font size + arrow icon support --- */
+.metric-change,
+.period-badge {
+    font-size: 12px;
+    min-height: 20px;
+}
+
+@media (max-width: 480px) {
+    .metric-change,
+    .period-badge {
+        font-size: 11px;
+    }
+}
+
+/* Arrow icon inside delta badges */
+.metric-change.up::before { content: '↑ '; }
+.metric-change.down::before { content: '↓ '; }
+.period-badge.up::before { content: '↑ '; }
+.period-badge.down::before { content: '↓ '; }
+
+/* --- Sprint 1: M-07 — Platform/nav tab active state emphasis --- */
+.tab-btn.active {
+    font-weight: 600;
+}
+.tab-btn:not(.active) {
+    opacity: 0.65;
+}
+.tab-btn:not(.active):hover {
+    opacity: 1;
+}
+
+/* --- Sprint 1: M-08 — Skeleton shimmer for loading states --- */
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--light-gray) 25%,
+        rgba(255,255,255,0.5) 50%,
+        var(--light-gray) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+    color: transparent !important;
+}
+
+.skeleton-text {
+    display: inline-block;
+    width: 80%;
+    height: 1em;
+}
+
+.skeleton-number {
+    display: inline-block;
+    width: 60%;
+    height: 1.5em;
+}
+
+/* --- Sprint 2: D-01 — Card hierarchy on desktop (hero row) --- */
+@media (min-width: 1024px) {
+    .metrics-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+    /* First three cards (primary KPIs) get a gold accent top bar */
+    .metrics-grid .metric-card:nth-child(-n+3) .metric-value {
+        font-size: 36px;
+    }
+    /* Secondary stats row — slightly subdued */
+    .metrics-grid .metric-card:nth-child(n+4) {
+        background: var(--surface);
+    }
+    .metrics-grid .metric-card:nth-child(n+4) .metric-value {
+        font-size: 28px;
+    }
+}
+
+/* --- Sprint 2: D-03 — Responsive chart height --- */
+.chart-canvas {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 5;
+    max-height: 400px;
+}
+
+@media (max-width: 480px) {
+    .chart-canvas {
+        max-height: 200px;
+    }
+}
+
+/* --- Sprint 2: D-05 — Freshness label (Last synced) --- */
+.freshness-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--mid-gray);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.freshness-label .freshness-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.freshness-dot.fresh { background: var(--success); }   /* < 6h */
+.freshness-dot.stale { background: var(--warning); }   /* 6–12h */
+.freshness-dot.old   { background: var(--danger); }    /* > 12h */
+
+/* --- Sprint 3: D-07 — Benchmark context label --- */
+.benchmark-label {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--mid-gray);
+    margin-top: 4px;
+    font-style: italic;
+}
+
+/* --- Responsive: Video feed on narrow mobile --- */
+@media (max-width: 480px) {
+    .video-feed-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .video-feed-thumb {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16/9;
+    }
+    .video-feed-stats {
+        width: 100%;
+        padding-left: 0;
+        justify-content: space-between;
+    }
+    .video-feed-stat {
+        align-items: center;
+        min-width: 0;
+        flex: 1;
+    }
+    .treemap-wrap {
+        flex-direction: column;
+    }
+    .treemap-legend {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .treemap-canvas-wrap {
+        height: 220px;
+    }
+    .insights-bar {
+        flex-direction: column;
+        gap: 8px;
+        font-size: 12px;
+    }
+}
+
 /* --- Scrollbar --- */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

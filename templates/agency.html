@@ -117,10 +117,11 @@
                     <canvas id="spark-{{ creator.id }}" height="32"></canvas>
                 </div>
                 {% if creator.last_yt_sync %}
-                <div class="sync-info">
-                    <span class="sync-dot"></span>
+                {% set _hours_ago = ((now_utc - creator.last_yt_sync).total_seconds() / 3600) | int if creator.last_yt_sync else 99 %}
+                <span class="freshness-label">
+                    <span class="freshness-dot {{ 'fresh' if _hours_ago < 6 else ('stale' if _hours_ago < 12 else 'old') }}"></span>
                     {{ creator.last_yt_sync | timeago }}
-                </div>
+                </span>
                 {% endif %}
             </div>
         </a>

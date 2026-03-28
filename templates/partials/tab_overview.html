@@ -17,6 +17,7 @@
     <div class="metric-card">
         <div class="metric-label">Engagement Rate</div>
         <div class="metric-value">{{ creator.yt_engagement_rate | format_percent }}</div>
+        <div class="benchmark-label">YouTube avg: 2-4%</div>
         <div class="metric-split">
             <span class="split-item"><span class="split-label">Long Form</span> {{ lf_metrics.avg_engagement | format_percent }}</span>
             <span class="split-item"><span class="split-label">Shorts</span> {{ shorts_metrics.avg_engagement | format_percent }}</span>

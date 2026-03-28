@@ -235,6 +235,7 @@ async def agency_dashboard(request: Request, db: AsyncSession = Depends(get_db))
         "creators": creators,
         "sparklines": sparklines,
         "page_title": "Agency Dashboard",
+        "now_utc": datetime.datetime.utcnow(),
     })
 
 
