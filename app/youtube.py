@@ -301,19 +301,24 @@ async def _sync_recent_videos(creator: Creator, token: str, db: AsyncSession):
 
 
 async def _sync_daily_stats(creator: Creator, token: str, db: AsyncSession):
-    """Pull daily analytics for the last 90 days. Includes impressions, CTR, uniques."""
+    """Pull daily analytics for the last 90 days.
+
+    Note: impressions/CTR are NOT available with the 'day' dimension in
+    the Analytics API. They are fetched as a channel-level aggregate and
+    will be backfilled per-day by the Reporting API (channel_combined).
+    """
     if not creator.youtube_channel_id:
         return
 
     end_date = datetime.date.today()
     start_date = end_date - datetime.timedelta(days=DAILY_STATS_WINDOW_DAYS)
 
-    # Main daily stats query (impressions + CTR added)
+    # Daily stats query — only metrics supported with 'day' dimension
     data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "metrics": "views,subscribersGained,subscribersLost,estimatedMinutesWatched,averageViewDuration,likes,comments,shares,impressions,impressionClickThroughRate",
+        "metrics": "views,subscribersGained,subscribersLost,estimatedMinutesWatched,averageViewDuration,likes,comments,shares",
         "dimensions": "day",
         "sort": "day",
     })
@@ -345,41 +350,25 @@ async def _sync_daily_stats(creator: Creator, token: str, db: AsyncSession):
         stat.likes = int(row[6])
         stat.comments = int(row[7])
         stat.shares = int(row[8])
-        stat.impressions = int(row[9]) if row[9] is not None else None
-        stat.impressions_ctr = float(row[10]) if row[10] is not None else None
 
-    # Separate query for uniques (not available with day dimension in same query for some accounts)
-    # uniques is only available at channel level, queried per-day
-    uniques_data = await _yt_analytics_get(token, {
+    # Separate aggregate query for impressions + CTR (no day dimension — API limitation)
+    impressions_data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "metrics": "views",
-        "dimensions": "day",
-        "sort": "day",
+        "metrics": "impressions,impressionClickThroughRate",
     })
-    # Try fetching uniques as a separate call — some channels may not have access
-    try:
-        uniques_resp = await _yt_analytics_get(token, {
-            "ids": "channel==MINE",
-            "startDate": start_date.isoformat(),
-            "endDate": end_date.isoformat(),
-            "metrics": "views",
-            "dimensions": "month",
-            "sort": "month",
-        })
-        # Note: 'uniques' metric is not available with 'day' dimension in the Analytics API.
-        # It's only available without dimensions or with 'month'. We'll store monthly aggregates
-        # and also try to get the aggregate for the full window.
-        agg_data = await _yt_analytics_get(token, {
-            "ids": "channel==MINE",
-            "startDate": start_date.isoformat(),
-            "endDate": end_date.isoformat(),
-            "metrics": "viewerPercentage",
-            "dimensions": "subscribedStatus",
-        })
-    except Exception:
-        pass  # uniques not critical — log and continue
+    # Store aggregate impressions on the most recent daily stat row
+    # (Reporting API will backfill per-day later)
+    if impressions_data and impressions_data.get("rows"):
+        agg_row = impressions_data["rows"][0]
+        total_impressions = int(agg_row[0]) if agg_row[0] is not None else None
+        avg_ctr = float(agg_row[1]) if agg_row[1] is not None else None
+        # Store on creator directly for now — per-day comes from Reporting API
+        if total_impressions is not None:
+            creator.yt_impressions_30d = total_impressions
+        if avg_ctr is not None:
+            creator.yt_impressions_ctr = avg_ctr
 
 
 async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
@@ -464,23 +453,29 @@ async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
                 value=row[0], percentage=round(pct, 1),
             ))
 
-    # 4. Age group watch time (spec 1D) — separate dimension value to avoid confusion
+    # 4. Age group watch time (spec 1D)
+    # Note: averageViewDuration is NOT supported with ageGroup dimension.
+    # Use estimatedMinutesWatched + views to calculate it manually.
     data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "metrics": "views,averageViewDuration",
+        "metrics": "views,estimatedMinutesWatched",
         "dimensions": "ageGroup",
         "sort": "ageGroup",
     })
     if data and data.get("rows"):
         total_views = sum(float(r[1]) for r in data["rows"])
         for row in data["rows"]:
-            pct = (float(row[1]) / total_views * 100) if total_views > 0 else 0
+            views = float(row[1])
+            watch_mins = float(row[2])
+            pct = (views / total_views * 100) if total_views > 0 else 0
+            # Calculate avg view duration in seconds: (watch_time_minutes * 60) / views
+            avg_dur = (watch_mins * 60 / views) if views > 0 else 0.0
             db.add(YouTubeDemographic(
                 creator_id=creator.id, dimension="ageGroup_watch_time",
                 value=row[0], percentage=round(pct, 1),
-                avg_view_duration=float(row[2]),
+                avg_view_duration=round(avg_dur, 1),
             ))
 
     # 5. Playback location (spec 1G)
@@ -653,18 +648,24 @@ async def _sync_traffic_source_detail(creator: Creator, token: str, db: AsyncSes
 
 
 async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSession):
-    """Batch-sync per-video analytics (90d, top 200). Includes impressions, CTR, shares."""
+    """Batch-sync per-video analytics (90d, top 200).
+
+    Note: impressions/CTR are NOT supported with the 'video' dimension
+    in the Analytics API. Only views, averageViewDuration, averageViewPercentage,
+    and shares are available. Per-video impressions come from Reporting API.
+    """
     if not creator.youtube_channel_id:
         return
 
     end_date = datetime.date.today()
     start_date = end_date - datetime.timedelta(days=VIDEO_BATCH_WINDOW_DAYS)
 
+    # Metrics supported with 'video' dimension
     data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
-        "metrics": "views,averageViewDuration,averageViewPercentage,impressions,impressionClickThroughRate,shares",
+        "metrics": "views,averageViewDuration,averageViewPercentage,shares",
         "dimensions": "video",
         "sort": "-views",
         "maxResults": VIDEO_BATCH_MAX_RESULTS,
@@ -674,12 +675,10 @@ async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSes
 
     for row in data["rows"]:
         yt_video_id = row[0]
-        # row indices: 0=videoId, 1=views, 2=avgDuration, 3=avgPct, 4=impressions, 5=CTR, 6=shares
+        # row indices: 0=videoId, 1=views, 2=avgDuration, 3=avgPct, 4=shares
         avg_duration = float(row[2])
         avg_pct = float(row[3])
-        impressions = int(row[4]) if row[4] is not None else None
-        impressions_ctr = float(row[5]) if row[5] is not None else None
-        shares = int(row[6]) if row[6] is not None else None
+        shares = int(row[4]) if row[4] is not None else None
 
         # Find the YouTubeVideo record by video_id string
         result = await db.execute(
@@ -703,8 +702,6 @@ async def _sync_video_analytics_batch(creator: Creator, token: str, db: AsyncSes
             db.add(analytics)
         analytics.avg_view_duration = avg_duration
         analytics.avg_pct_viewed = avg_pct
-        analytics.impressions = impressions
-        analytics.impressions_ctr = impressions_ctr
         analytics.shares = shares
         analytics.last_updated = datetime.datetime.utcnow()
 
@@ -784,16 +781,9 @@ async def _calculate_metrics(creator: Creator, db: AsyncSession):
     total_lost = sum(s.subscribers_lost for s in stats)
     creator.yt_net_subscribers_30d = total_gained - total_lost
 
-    # Impressions aggregates (30 days)
-    total_impressions = sum(s.impressions or 0 for s in stats)
-    creator.yt_impressions_30d = total_impressions
-    # Weighted average CTR: sum(impressions * ctr) / sum(impressions)
-    weighted_ctr_sum = sum((s.impressions or 0) * (s.impressions_ctr or 0) for s in stats)
-    creator.yt_impressions_ctr = round(weighted_ctr_sum / max(total_impressions, 1), 4)
-
-    # Unique viewers — sum daily (approximate, actual uniques may overlap across days)
-    total_unique = sum(s.unique_viewers or 0 for s in stats)
-    creator.yt_unique_viewers_30d = total_unique
+    # Note: impressions/CTR are set directly on Creator by _sync_daily_stats
+    # (fetched as aggregate from Analytics API, not per-day).
+    # Per-day impressions will be backfilled by Reporting API when available.
 
     # Trend: compare last 15 days vs prior 15 days
     if len(stats) >= 20:
