@@ -25,6 +25,7 @@
 {% set total_views_30d = creators | sum(attribute='yt_30d_views') %}
 {% set avg_engagement = (creators | sum(attribute='yt_engagement_rate') / creators | length) if creators | length > 0 else 0 %}
 {% set growing = creators | selectattr('trend_direction', 'equalto', 'growing') | list | length %}
+{% set total_ig_followers = creators | sum(attribute='ig_followers') %}
 
 <div class="metrics-grid">
     <div class="metric-card gold">
@@ -42,6 +43,13 @@
         <div class="metric-value">{{ avg_engagement | format_percent }}</div>
         <div class="metric-change flat">Likes + comments / views</div>
     </div>
+    {% if total_ig_followers > 0 %}
+    <div class="metric-card">
+        <div class="metric-label">IG Followers</div>
+        <div class="metric-value">{{ total_ig_followers | format_number }}</div>
+        <div class="metric-change flat">Combined roster</div>
+    </div>
+    {% endif %}
     <div class="metric-card success">
         <div class="metric-label">Growing</div>
         <div class="metric-value">{{ growing }}/{{ creators | length }}</div>
@@ -96,6 +104,12 @@
                     <div class="creator-stat-value">{{ creator.yt_engagement_rate | format_percent }}</div>
                     <div class="creator-stat-label">Engage</div>
                 </div>
+                {% if creator.instagram_account_id %}
+                <div class="creator-stat">
+                    <div class="creator-stat-value">{{ creator.ig_followers | format_number }}</div>
+                    <div class="creator-stat-label">IG</div>
+                </div>
+                {% endif %}
             </div>
 
             <div class="creator-footer">

@@ -13,6 +13,12 @@
                 {% else %}
                 YouTube not connected
                 {% endif %}
+                {% if creator.instagram_username %}
+                <span style="margin-left:8px;color:var(--mid-gray);">&middot;</span>
+                <a href="https://instagram.com/{{ creator.instagram_username }}" target="_blank" rel="noopener" style="color:var(--mid-gray);text-decoration:none;margin-left:8px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:3px;"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>@{{ creator.instagram_username }}
+                </a>
+                {% endif %}
             </p>
         </div>
     </div>
@@ -43,52 +49,98 @@
     </div>
 </div>
 
-<!-- Tab Bar -->
-<div class="tab-bar">
-    <button class="tab-btn active"
-            hx-get="/creator/{{ creator.slug }}/tab/overview"
-            hx-target="#tab-content"
-            hx-swap="innerHTML">
-        Overview
+<!-- Platform Tab Bar (YouTube | Instagram) -->
+<div class="tab-bar" id="platform-tabs" style="margin-bottom:0;">
+    <button class="tab-btn active" onclick="switchPlatform('youtube')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><path d="M22.54 6.42a2.78 2.78 0 00-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 00-1.94 2 29 29 0 00-.46 5.25 29 29 0 00.46 5.25 2.78 2.78 0 001.94 2C5.12 19.5 12 19.5 12 19.5s6.88 0 8.6-.46a2.78 2.78 0 001.94-2 29 29 0 00.46-5.25 29 29 0 00-.46-5.37z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></svg>
+        YouTube
     </button>
-    <button class="tab-btn"
-            hx-get="/creator/{{ creator.slug }}/tab/content"
-            hx-target="#tab-content"
-            hx-swap="innerHTML">
-        Content
-    </button>
-    <button class="tab-btn"
-            hx-get="/creator/{{ creator.slug }}/tab/audience"
-            hx-target="#tab-content"
-            hx-swap="innerHTML">
-        Audience
-    </button>
-    <button class="tab-btn"
-            hx-get="/creator/{{ creator.slug }}/tab/traffic"
-            hx-target="#tab-content"
-            hx-swap="innerHTML">
-        Traffic
+    <button class="tab-btn" onclick="switchPlatform('instagram')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+        Instagram
     </button>
 </div>
 
-<div id="tab-content">
-    {% include "partials/tab_overview.html" %}
+<!-- YouTube Panel (existing content — preserved exactly) -->
+<div id="platform-youtube">
+    <div class="tab-bar" id="yt-sub-tabs">
+        <button class="tab-btn active"
+                hx-get="/creator/{{ creator.slug }}/tab/overview"
+                hx-target="#tab-content"
+                hx-swap="innerHTML">
+            Overview
+        </button>
+        <button class="tab-btn"
+                hx-get="/creator/{{ creator.slug }}/tab/content"
+                hx-target="#tab-content"
+                hx-swap="innerHTML">
+            Content
+        </button>
+        <button class="tab-btn"
+                hx-get="/creator/{{ creator.slug }}/tab/audience"
+                hx-target="#tab-content"
+                hx-swap="innerHTML">
+            Audience
+        </button>
+        <button class="tab-btn"
+                hx-get="/creator/{{ creator.slug }}/tab/traffic"
+                hx-target="#tab-content"
+                hx-swap="innerHTML">
+            Traffic
+        </button>
+    </div>
+
+    <div id="tab-content">
+        {% include "partials/tab_overview.html" %}
+    </div>
+
+    {% if creator.last_yt_sync %}
+    <div class="sync-info" style="margin-top:32px;">
+        <span class="sync-dot"></span>
+        Last synced {{ creator.last_yt_sync | timeago }}
+    </div>
+    {% endif %}
 </div>
 
-{% if creator.last_yt_sync %}
-<div class="sync-info" style="margin-top:32px;">
-    <span class="sync-dot"></span>
-    Last synced {{ creator.last_yt_sync | timeago }}
+<!-- Instagram Panel (loaded via HTMX on tab switch) -->
+<div id="platform-instagram" style="display:none;">
+    <div id="ig-tab-content">
+        {% include "partials/tab_instagram.html" %}
+    </div>
 </div>
-{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Tab switching — toggle active class
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+// Platform tab switching (YouTube | Instagram)
+function switchPlatform(platform) {
+    var ytPanel = document.getElementById('platform-youtube');
+    var igPanel = document.getElementById('platform-instagram');
+    var platformBtns = document.querySelectorAll('#platform-tabs .tab-btn');
+
+    platformBtns.forEach(function(b, i) {
+        b.classList.remove('active');
+        if ((platform === 'youtube' && i === 0) || (platform === 'instagram' && i === 1)) {
+            b.classList.add('active');
+        }
+    });
+
+    if (platform === 'youtube') {
+        ytPanel.style.display = '';
+        igPanel.style.display = 'none';
+    } else {
+        ytPanel.style.display = 'none';
+        igPanel.style.display = '';
+    }
+}
+
+// YouTube sub-tab switching — toggle active class within the YT sub-tabs only
+document.querySelectorAll('#yt-sub-tabs .tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('#yt-sub-tabs .tab-btn').forEach(function(b) {
+            b.classList.remove('active');
+        });
         btn.classList.add('active');
     });
 });

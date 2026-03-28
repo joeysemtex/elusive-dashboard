@@ -94,18 +94,32 @@
             </ul>
             <p>We do not access your Gmail, Google Drive, contacts, or any data outside of YouTube.</p>
 
+            <p>When you connect your Instagram account, we receive:</p>
+            <ul>
+                <li>An OAuth access token via Facebook Login that grants read-only access to your Instagram Business or Creator account.</li>
+                <li>Your Instagram username and profile picture.</li>
+            </ul>
+            <p>We use that token to retrieve:</p>
+            <ul>
+                <li>Follower count and media count.</li>
+                <li>Account insights (reach over the last 30 days).</li>
+                <li>Recent post metrics (likes, comments) to calculate engagement rate.</li>
+            </ul>
+            <p>We do not access your Instagram direct messages, post to your account, or access any Facebook data beyond what is needed to discover your linked Instagram account.</p>
+
             <h2>2. How tokens are stored</h2>
-            <p>Your Google OAuth tokens are encrypted at rest using Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256) before they are saved to the database. The encryption key is held as a server-side environment variable and is never exposed to the browser or included in logs.</p>
+            <p>Your Google and Instagram OAuth tokens are encrypted at rest using Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256) before they are saved to the database. The encryption key is held as a server-side environment variable and is never exposed to the browser or included in logs.</p>
 
             <h2>3. How data is used</h2>
-            <p>Your YouTube data is used solely to populate the Elusive Analytics dashboard so that you and your management team can track channel performance, identify trends, and prepare for brand partnerships. We never sell, share, or transfer your data to third parties for advertising or marketing purposes.</p>
+            <p>Your YouTube and Instagram data is used solely to populate the Elusive Analytics dashboard so that you and your management team can track channel performance, identify trends, and prepare for brand partnerships. We never sell, share, or transfer your data to third parties for advertising or marketing purposes.</p>
 
             <h2>4. Data retention</h2>
             <p>We retain your analytics snapshots (daily stats, video metrics) for as long as your account is active. If you request account deletion, all stored data — including tokens, stats, and profile information — will be permanently removed within 30 days.</p>
 
             <h2>5. Third-party services</h2>
             <ul>
-                <li><strong>Google OAuth / YouTube Data API</strong> — used to authenticate you and fetch channel data. Subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+                <li><strong>Google OAuth / YouTube Data API</strong> — used to authenticate you and fetch YouTube channel data. Subject to <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+                <li><strong>Meta / Instagram Graph API</strong> — used to connect your Instagram account and fetch account insights. Subject to <a href="https://www.facebook.com/privacy/policy/" target="_blank" rel="noopener">Meta's Privacy Policy</a>.</li>
                 <li><strong>Railway</strong> — cloud hosting provider where the application and database run. Subject to <a href="https://railway.com/legal/privacy" target="_blank" rel="noopener">Railway's Privacy Policy</a>.</li>
             </ul>
             <p>No other third-party analytics, tracking, or advertising services are used on this dashboard.</p>
@@ -117,6 +131,7 @@
             <p>You can:</p>
             <ul>
                 <li>Revoke the dashboard's access to your YouTube data at any time via your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google account permissions</a>.</li>
+                <li>Disconnect Instagram at any time via <a href="https://www.instagram.com/accounts/manage_access/" target="_blank" rel="noopener">Instagram Settings &gt; Apps and Websites</a>. This triggers automatic removal of your Instagram token from our database.</li>
                 <li>Request a copy of all data we hold about you.</li>
                 <li>Request deletion of your account and all associated data.</li>
             </ul>

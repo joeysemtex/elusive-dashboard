@@ -225,6 +225,13 @@ async def export_creator_pitch(
             }
             for v in top_videos
         ],
+        "instagram": {
+            "username": creator.instagram_username,
+            "followers": creator.ig_followers,
+            "reach_30d": creator.ig_reach_30d,
+            "engagement_rate": round(creator.ig_engagement_rate, 2) if creator.ig_engagement_rate else None,
+            "last_sync": creator.last_ig_sync.isoformat() if creator.last_ig_sync else None,
+        },
         "generated_at": datetime.datetime.utcnow().isoformat(),
         "source": "elusive-dashboard",
     }

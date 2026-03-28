@@ -1,0 +1,57 @@
+<!-- Instagram tab partial (HTMX fragment — no extends) -->
+
+{% if creator.instagram_account_id %}
+
+<div class="metrics-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="metric-card gold">
+        <div class="metric-label">Followers</div>
+        <div class="metric-value">{{ creator.ig_followers | format_number }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">30-Day Reach</div>
+        <div class="metric-value">{{ creator.ig_reach_30d | format_number }}</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-label">Engagement Rate</div>
+        <div class="metric-value">{{ creator.ig_engagement_rate | format_percent }}</div>
+    </div>
+</div>
+
+{% if creator.last_ig_sync %}
+<div class="sync-info" style="margin-top:24px;">
+    <span class="sync-dot"></span>
+    Last synced {{ creator.last_ig_sync | timeago }}
+</div>
+{% elif creator.ig_followers == 0 or creator.ig_followers is none %}
+<p class="empty-state" style="margin-top:24px;">Instagram data is syncing. Check back in a few minutes.</p>
+{% endif %}
+
+{% else %}
+
+<!-- Not connected — show prompt only to the creator who owns this page -->
+{% set _user = current_user or user %}
+{% if _user and _user.id == creator.user_id %}
+<div style="text-align:center;padding:48px 24px;">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--mid-gray)" stroke-width="1.5" style="margin-bottom:16px;">
+        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+        <path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/>
+        <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+    </svg>
+    <h3 style="font-size:16px;font-weight:600;color:var(--charcoal);margin-bottom:8px;">Connect Your Instagram</h3>
+    <p style="font-size:13px;color:var(--mid-gray);margin-bottom:20px;max-width:360px;margin-left:auto;margin-right:auto;">
+        Link your Instagram Business or Creator account to see follower counts, reach, and engagement metrics alongside your YouTube data.
+    </p>
+    <a href="/auth/instagram" class="btn btn-primary btn-sm" style="display:inline-flex;align-items:center;gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+            <path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/>
+            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+        </svg>
+        Connect Instagram
+    </a>
+</div>
+{% else %}
+<p class="empty-state" style="padding:48px 24px;text-align:center;">Instagram is not yet connected for this creator.</p>
+{% endif %}
+
+{% endif %}
