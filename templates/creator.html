@@ -93,6 +93,15 @@
     <div id="tab-content">
         {% include "partials/tab_overview.html" %}
     </div>
+    <!-- M-08: Skeleton loading state shown during HTMX tab loads -->
+    <template id="tab-skeleton">
+        <div class="metrics-grid" style="margin-bottom:24px;">
+            <div class="metric-card"><div class="metric-label skeleton skeleton-text">&nbsp;</div><div class="metric-value skeleton skeleton-number">&nbsp;</div></div>
+            <div class="metric-card"><div class="metric-label skeleton skeleton-text">&nbsp;</div><div class="metric-value skeleton skeleton-number">&nbsp;</div></div>
+            <div class="metric-card"><div class="metric-label skeleton skeleton-text">&nbsp;</div><div class="metric-value skeleton skeleton-number">&nbsp;</div></div>
+        </div>
+        <div class="chart-container"><div class="skeleton" style="height:160px;border-radius:var(--radius-sm);">&nbsp;</div></div>
+    </template>
 
     {% if creator.last_yt_sync %}
     <div class="sync-info" style="margin-top:32px;">
@@ -144,6 +153,38 @@ document.querySelectorAll('#yt-sub-tabs .tab-btn').forEach(function(btn) {
         btn.classList.add('active');
     });
 });
+
+// M-08: Show skeleton shimmer during HTMX tab loads
+document.addEventListener('htmx:beforeRequest', function(e) {
+    if (e.detail.target && e.detail.target.id === 'tab-content') {
+        var tpl = document.getElementById('tab-skeleton');
+        if (tpl) {
+            e.detail.target.innerHTML = '';
+            e.detail.target.appendChild(tpl.content.cloneNode(true));
+        }
+    }
+});
+
+// D-06: Sort video feed rows by column
+function sortVideoFeed(btn, key) {
+    // Toggle active state on sort buttons
+    var controls = btn.closest('.video-sort-controls');
+    if (controls) {
+        controls.querySelectorAll('.format-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+    }
+    // Sort all video feeds on the page
+    document.querySelectorAll('.video-feed').forEach(function(feed) {
+        var rows = Array.from(feed.querySelectorAll('.video-feed-row'));
+        rows.sort(function(a, b) {
+            if (key === 'date') {
+                return (b.dataset.date || '').localeCompare(a.dataset.date || '');
+            }
+            return (parseFloat(b.dataset[key]) || 0) - (parseFloat(a.dataset[key]) || 0);
+        });
+        rows.forEach(function(row) { feed.appendChild(row); });
+    });
+}
 </script>
 
 {% if user.role == 'admin' %}

@@ -61,15 +61,34 @@
 </div>
 
 <!-- Creator Grid -->
-<div class="section-header">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-    Roster
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+    <div class="section-header" style="margin-bottom:0;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        Roster
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input type="text" id="roster-search" placeholder="Search creators..."
+               style="padding:8px 12px;border:1px solid var(--light-gray);border-radius:var(--radius-sm);font-family:var(--font-primary);font-size:13px;width:180px;outline:none;"
+               oninput="filterCreators(this.value)">
+        <select id="roster-sort"
+                style="padding:8px 12px;border:1px solid var(--light-gray);border-radius:var(--radius-sm);font-family:var(--font-primary);font-size:13px;outline:none;background:var(--surface);color:var(--charcoal);cursor:pointer;"
+                onchange="sortCreators(this.value)">
+            <option value="name">Sort: Name</option>
+            <option value="subs">Sort: Subscribers</option>
+            <option value="views">Sort: 30d Views</option>
+            <option value="engagement">Sort: Engagement</option>
+        </select>
+    </div>
 </div>
 
 {% if creators %}
 <div class="creators-grid">
     {% for creator in creators %}
-    <div id="creator-card-{{ creator.id }}" class="creator-card-wrap">
+    <div id="creator-card-{{ creator.id }}" class="creator-card-wrap"
+         data-name="{{ creator.display_name | lower }}"
+         data-subs="{{ creator.yt_subscribers or 0 }}"
+         data-views="{{ creator.yt_30d_views or 0 }}"
+         data-engagement="{{ creator.yt_engagement_rate or 0 }}">
         <a href="/creator/{{ creator.slug }}" class="creator-card">
             <div class="creator-card-header">
                 <img src="{{ creator.avatar_url or '/static/img/default-avatar.svg' }}" class="creator-avatar" alt="{{ creator.display_name }}">
@@ -162,6 +181,26 @@
 
 {% block scripts %}
 <script>
+// --- D-04: Sort & filter creators ---
+function filterCreators(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.creator-card-wrap').forEach(card => {
+        const name = card.dataset.name || '';
+        card.style.display = name.includes(q) ? '' : 'none';
+    });
+}
+
+function sortCreators(key) {
+    const grid = document.querySelector('.creators-grid');
+    if (!grid) return;
+    const cards = Array.from(grid.querySelectorAll('.creator-card-wrap'));
+    cards.sort((a, b) => {
+        if (key === 'name') return (a.dataset.name || '').localeCompare(b.dataset.name || '');
+        return (parseFloat(b.dataset[key]) || 0) - (parseFloat(a.dataset[key]) || 0);
+    });
+    cards.forEach(card => grid.appendChild(card));
+}
+
 // --- Sparkline charts for each creator ---
 document.addEventListener('DOMContentLoaded', function() {
     const sparklines = {{ sparklines | tojson }};

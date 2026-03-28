@@ -29,13 +29,25 @@
 
 <!-- Top Performers -->
 {% if top_videos %}
-<h3 class="section-header">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-    Top Performers
-</h3>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+    <h3 class="section-header" style="margin-bottom:0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Top Performers
+    </h3>
+    <div class="video-sort-controls" style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="format-btn active" onclick="sortVideoFeed(this, 'views')">Views</button>
+        <button class="format-btn" onclick="sortVideoFeed(this, 'engagement')">Engage</button>
+        <button class="format-btn" onclick="sortVideoFeed(this, 'duration')">Duration</button>
+        <button class="format-btn" onclick="sortVideoFeed(this, 'date')">Date</button>
+    </div>
+</div>
 <div class="video-feed video-feed--top">
     {% for video in top_videos %}
     <div class="video-feed-row"
+         data-views="{{ video.views or 0 }}"
+         data-engagement="{{ video.engagement_rate or 0 }}"
+         data-duration="{{ video.duration_seconds or 0 }}"
+         data-date="{{ video.published_at.isoformat() if video.published_at else '' }}"
          hx-get="/creator/{{ creator.slug }}/video/{{ video.video_id }}"
          hx-target="#tab-content" hx-swap="innerHTML">
         <div class="video-feed-thumb">
@@ -74,6 +86,10 @@
 <div class="video-feed video-feed--bottom">
     {% for video in bottom_videos %}
     <div class="video-feed-row"
+         data-views="{{ video.views or 0 }}"
+         data-engagement="{{ video.engagement_rate or 0 }}"
+         data-duration="{{ video.duration_seconds or 0 }}"
+         data-date="{{ video.published_at.isoformat() if video.published_at else '' }}"
          hx-get="/creator/{{ creator.slug }}/video/{{ video.video_id }}"
          hx-target="#tab-content" hx-swap="innerHTML">
         <div class="video-feed-thumb">
