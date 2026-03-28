@@ -97,7 +97,7 @@
     <!-- 5. Top Countries (with avg view duration) -->
     <div class="audience-panel">
         <h3>Top Countries</h3>
-        {% for item in demographics.get("country", []) %}
+        {% for item in demographics.get("country", [])[:10] %}
         <div class="demo-bar-row">
             <span class="demo-bar-label">{{ item.value }}</span>
             <div class="demo-bar-track">
