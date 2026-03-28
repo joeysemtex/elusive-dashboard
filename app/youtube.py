@@ -102,7 +102,11 @@ async def _yt_analytics_get(token: str, params: dict) -> Optional[dict]:
             timeout=30,
         )
     if resp.status_code != 200:
-        log.error(f"YouTube Analytics API error {resp.status_code}: {resp.text[:200]}")
+        # 400s for unsupported metric/dimension combos are expected — log as INFO not ERROR
+        if resp.status_code == 400:
+            log.info(f"YouTube Analytics API 400 (unsupported query): {resp.text[:150]}")
+        else:
+            log.error(f"YouTube Analytics API error {resp.status_code}: {resp.text[:200]}")
         return None
     return resp.json()
 
@@ -352,23 +356,24 @@ async def _sync_daily_stats(creator: Creator, token: str, db: AsyncSession):
         stat.shares = int(row[8])
 
     # Separate aggregate query for impressions + CTR (no day dimension — API limitation)
+    # NOTE: impressions/CTR metrics require YouTube Partner Program (monetisation).
+    # Channels without YPP will get a 400 "Unknown identifier" — this is expected.
     impressions_data = await _yt_analytics_get(token, {
         "ids": "channel==MINE",
         "startDate": start_date.isoformat(),
         "endDate": end_date.isoformat(),
         "metrics": "impressions,impressionClickThroughRate",
     })
-    # Store aggregate impressions on the most recent daily stat row
-    # (Reporting API will backfill per-day later)
     if impressions_data and impressions_data.get("rows"):
         agg_row = impressions_data["rows"][0]
         total_impressions = int(agg_row[0]) if agg_row[0] is not None else None
         avg_ctr = float(agg_row[1]) if agg_row[1] is not None else None
-        # Store on creator directly for now — per-day comes from Reporting API
         if total_impressions is not None:
             creator.yt_impressions_30d = total_impressions
         if avg_ctr is not None:
             creator.yt_impressions_ctr = avg_ctr
+    else:
+        log.info("Impressions metrics unavailable (channel may not be in YouTube Partner Program)")
 
 
 async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
@@ -454,29 +459,10 @@ async def _sync_demographics(creator: Creator, token: str, db: AsyncSession):
             ))
 
     # 4. Age group watch time (spec 1D)
-    # Note: averageViewDuration is NOT supported with ageGroup dimension.
-    # Use estimatedMinutesWatched + views to calculate it manually.
-    data = await _yt_analytics_get(token, {
-        "ids": "channel==MINE",
-        "startDate": start_date.isoformat(),
-        "endDate": end_date.isoformat(),
-        "metrics": "views,estimatedMinutesWatched",
-        "dimensions": "ageGroup",
-        "sort": "ageGroup",
-    })
-    if data and data.get("rows"):
-        total_views = sum(float(r[1]) for r in data["rows"])
-        for row in data["rows"]:
-            views = float(row[1])
-            watch_mins = float(row[2])
-            pct = (views / total_views * 100) if total_views > 0 else 0
-            # Calculate avg view duration in seconds: (watch_time_minutes * 60) / views
-            avg_dur = (watch_mins * 60 / views) if views > 0 else 0.0
-            db.add(YouTubeDemographic(
-                creator_id=creator.id, dimension="ageGroup_watch_time",
-                value=row[0], percentage=round(pct, 1),
-                avg_view_duration=round(avg_dur, 1),
-            ))
+    # NOTE: estimatedMinutesWatched with ageGroup dimension is NOT supported by the
+    # Analytics API (returns 400). Age watch time data will come from the Reporting API
+    # via _ingest_channel_combined() when bulk CSV reports are available.
+    # The ageGroup_watch_time dimension will be empty until then.
 
     # 5. Playback location (spec 1G)
     data = await _yt_analytics_get(token, {
