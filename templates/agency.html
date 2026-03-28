@@ -123,18 +123,6 @@
                     <div class="creator-stat-value">{{ creator.yt_engagement_rate | format_percent }}</div>
                     <div class="creator-stat-label">Engage</div>
                 </div>
-                {% if creator.yt_impressions_ctr %}
-                <div class="creator-stat">
-                    <div class="creator-stat-value" style="font-family:var(--font-mono);">{{ (creator.yt_impressions_ctr * 100) | round(1) }}%</div>
-                    <div class="creator-stat-label">CTR</div>
-                </div>
-                {% endif %}
-                {% if creator.yt_impressions_30d %}
-                <div class="creator-stat">
-                    <div class="creator-stat-value" style="font-family:var(--font-mono);">{{ creator.yt_impressions_30d | format_number }}</div>
-                    <div class="creator-stat-label">Impr</div>
-                </div>
-                {% endif %}
                 {% if creator.instagram_account_id %}
                 <div class="creator-stat">
                     <div class="creator-stat-value">{{ creator.ig_followers | format_number }}</div>
