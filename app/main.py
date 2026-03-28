@@ -531,7 +531,7 @@ async def tab_audience(slug: str, request: Request, db: AsyncSession = Depends(g
     demographics = demo_result.scalars().all()
     demo_data = {}
     for d in demographics:
-        demo_data.setdefault(d.dimension, []).append({"value": d.value, "percentage": d.percentage})
+        demo_data.setdefault(d.dimension, []).append({"value": d.value, "percentage": d.percentage, "avg_view_duration": d.avg_view_duration})
 
     return templates.TemplateResponse(request, "partials/tab_audience.html", {
         "creator": creator,
@@ -545,9 +545,27 @@ async def tab_traffic(slug: str, request: Request, db: AsyncSession = Depends(ge
     user, creator = await _get_creator_for_request(slug, request, db)
     traffic = await _get_traffic_data(creator.id, db)
 
+    # Search keywords
+    search_result = await db.execute(
+        select(YouTubeSearchTerm)
+        .where(YouTubeSearchTerm.creator_id == creator.id)
+        .order_by(YouTubeSearchTerm.views.desc())
+        .limit(25)
+    )
+    search_terms = search_result.scalars().all()
+
+    # Card stats
+    card_result = await db.execute(
+        select(YouTubeCardStats)
+        .where(YouTubeCardStats.creator_id == creator.id)
+    )
+    card_stats = card_result.scalar_one_or_none()
+
     return templates.TemplateResponse(request, "partials/tab_traffic.html", {
         "creator": creator,
         "traffic": traffic,
+        "search_terms": search_terms,
+        "card_stats": card_stats,
     })
 
 

@@ -1,4 +1,4 @@
-<!-- Phase 1.5: Audience tab partial (HTMX fragment — no extends) -->
+<!-- YouTube Expansion: Audience tab with new demographic panels -->
 
 <div class="metrics-grid">
     <div class="metric-card gold">
@@ -20,7 +20,7 @@
 </div>
 
 <div class="audience-grid">
-    <!-- Age Distribution -->
+    <!-- 1. Age Distribution -->
     <div class="audience-panel">
         <h3>Age Distribution</h3>
         {% for item in demographics.get("ageGroup", []) %}
@@ -37,7 +37,30 @@
         {% endif %}
     </div>
 
-    <!-- Gender Split -->
+    <!-- 2. Age Watch Time (NEW) -->
+    <div class="audience-panel">
+        <h3>Age Watch Time</h3>
+        {% set age_wt = demographics.get("ageGroup_watch_time", []) %}
+        {% if age_wt %}
+        {% set max_dur = age_wt | map(attribute='avg_view_duration') | select('number') | list | max if age_wt else 0 %}
+        {% for item in age_wt %}
+        <div class="demo-bar-row {{ 'demo-row-highlight' if item.avg_view_duration and max_dur and item.avg_view_duration == max_dur }}">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+            {% if item.avg_view_duration %}
+            <span class="demo-bar-duration">{{ (item.avg_view_duration // 60) | int }}:{{ '%02d' % (item.avg_view_duration % 60) | int }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="empty-state">Age watch time data not yet available</p>
+        {% endif %}
+    </div>
+
+    <!-- 3. Gender Split -->
     <div class="audience-panel">
         <h3>Gender Split</h3>
         {% for item in demographics.get("gender", []) %}
@@ -54,41 +77,7 @@
         {% endif %}
     </div>
 
-    <!-- Top Countries -->
-    <div class="audience-panel">
-        <h3>Top Countries</h3>
-        {% for item in demographics.get("country", []) %}
-        <div class="demo-bar-row">
-            <span class="demo-bar-label">{{ item.value }}</span>
-            <div class="demo-bar-track">
-                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
-            </div>
-            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
-        </div>
-        {% endfor %}
-        {% if not demographics.get("country") %}
-        <p class="empty-state">No country data available</p>
-        {% endif %}
-    </div>
-
-    <!-- Device Type -->
-    <div class="audience-panel">
-        <h3>Device Type</h3>
-        {% for item in demographics.get("deviceType", []) %}
-        <div class="demo-bar-row">
-            <span class="demo-bar-label">{{ item.value }}</span>
-            <div class="demo-bar-track">
-                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
-            </div>
-            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
-        </div>
-        {% endfor %}
-        {% if not demographics.get("deviceType") %}
-        <p class="empty-state">No device data yet. Run a sync to pull data.</p>
-        {% endif %}
-    </div>
-
-    <!-- Subscriber Status (Phase 3) -->
+    <!-- 4. Viewership Loyalty -->
     <div class="audience-panel">
         <h3>Subscriber vs Non-Subscriber</h3>
         {% for item in demographics.get("subscribedStatus", []) %}
@@ -101,7 +90,98 @@
         </div>
         {% endfor %}
         {% if not demographics.get("subscribedStatus") %}
-        <p class="empty-state">No subscriber status data yet. Run a sync to pull data.</p>
+        <p class="empty-state">No subscriber status data yet</p>
+        {% endif %}
+    </div>
+
+    <!-- 5. Top Countries (with avg view duration) -->
+    <div class="audience-panel">
+        <h3>Top Countries</h3>
+        {% for item in demographics.get("country", []) %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+            {% if item.avg_view_duration %}
+            <span class="demo-bar-duration">{{ (item.avg_view_duration // 60) | int }}:{{ '%02d' % (item.avg_view_duration % 60) | int }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% if not demographics.get("country") %}
+        <p class="empty-state">No country data available</p>
+        {% endif %}
+    </div>
+
+    <!-- 6. Playback Location (NEW) -->
+    <div class="audience-panel">
+        <h3>Playback Location</h3>
+        {% set playback = demographics.get("playbackLocation", []) %}
+        {% if playback %}
+        {% set external_pct = playback | selectattr('value', 'equalto', 'EXTERNAL') | map(attribute='percentage') | first | default(0) %}
+        {% for item in playback %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%; {% if 'WATCH' in item.value or 'BROWSE' in item.value %}background: var(--gold);{% else %}background: var(--mid-gray);{% endif %}"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+        </div>
+        {% endfor %}
+        {% if external_pct > 15 %}
+        <p style="font-size:11px;color:var(--gold);margin-top:8px;">High embed rate — content circulates beyond YouTube</p>
+        {% endif %}
+        {% else %}
+        <p class="empty-state">Playback location data not yet available</p>
+        {% endif %}
+    </div>
+
+    <!-- 7. Device Type -->
+    <div class="audience-panel">
+        <h3>Device Type</h3>
+        {% for item in demographics.get("deviceType", []) %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+        </div>
+        {% endfor %}
+        {% if not demographics.get("deviceType") %}
+        <p class="empty-state">No device data yet</p>
+        {% endif %}
+    </div>
+
+    <!-- 8. Operating System (NEW) -->
+    <div class="audience-panel">
+        <h3>Operating System</h3>
+        {% set os_data = demographics.get("operatingSystem", []) %}
+        {% if os_data %}
+        {% for item in os_data %}
+        {% if item.percentage >= 2 %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">{{ item.value }}</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ item.percentage }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ item.percentage|round(1) }}%</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% set other_pct = os_data | selectattr('percentage', 'lt', 2) | map(attribute='percentage') | sum | round(1) %}
+        {% if other_pct > 0 %}
+        <div class="demo-bar-row">
+            <span class="demo-bar-label">Other</span>
+            <div class="demo-bar-track">
+                <div class="demo-bar-fill" style="width: {{ other_pct }}%"></div>
+            </div>
+            <span class="demo-bar-pct">{{ other_pct }}%</span>
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="empty-state">OS data not yet available</p>
         {% endif %}
     </div>
 </div>
