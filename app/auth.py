@@ -170,14 +170,35 @@ async def handle_instagram_callback(request: Request, db: AsyncSession) -> dict:
         return {"success": False, "error": "no_creator_profile"}
 
     # Step 1: Exchange auth code for short-lived token (api.instagram.com)
-    token_data = await oauth.instagram.authorize_access_token(request)
-    short_token = token_data.get("access_token", "")
-    ig_user_id = str(token_data.get("user_id", ""))
-    if not short_token:
-        log.error("Instagram OAuth: no access_token in response")
-        return {"success": False, "error": "no_token"}
+    code = request.query_params.get("code", "")
+    if not code:
+        log.error("Instagram OAuth: no code in callback")
+        return {"success": False, "error": "no_code"}
+
+    redirect_uri = str(request.url_for("instagram_callback"))
+    if redirect_uri.startswith("http://") and settings.BASE_URL.startswith("https://"):
+        redirect_uri = redirect_uri.replace("http://", "https://", 1)
 
     async with httpx.AsyncClient() as client:
+        # Exchange code → short-lived token (form-encoded POST)
+        resp = await client.post("https://api.instagram.com/oauth/access_token", data={
+            "client_id": settings.META_APP_ID,
+            "client_secret": settings.META_APP_SECRET,
+            "grant_type": "authorization_code",
+            "redirect_uri": redirect_uri,
+            "code": code,
+        })
+        if resp.status_code != 200:
+            log.error(f"Instagram token exchange failed ({resp.status_code}): {resp.text}")
+            return {"success": False, "error": "no_token"}
+
+        token_data = resp.json()
+        short_token = token_data.get("access_token", "")
+        ig_user_id = str(token_data.get("user_id", ""))
+        if not short_token:
+            log.error(f"Instagram OAuth: no access_token in response: {token_data}")
+            return {"success": False, "error": "no_token"}
+
         # Step 2: Exchange short-lived → long-lived token (graph.instagram.com)
         resp = await client.get(f"{IG_GRAPH}/access_token", params={
             "grant_type": "ig_exchange_token",
